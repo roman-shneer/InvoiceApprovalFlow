@@ -1,7 +1,7 @@
 # ADR 0001: Database selection
 
 ## Status
-Accepted
+Superceded by [ADR 0009](0009-mongodb-invoice-store.md)
 
 ## Context
 We need to track changes and save logs for users, policies, and invoices. This data grows rapidly and has a dynamic structure, but we want to avoid managing a separate NoSQL infrastructure.
