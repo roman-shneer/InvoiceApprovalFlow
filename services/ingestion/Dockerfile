@@ -20,7 +20,13 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
 COPY ./services/ingestion/composer.json ./
-RUN composer install --prefer-dist --no-progress
+RUN composer config --global jobs 16 \
+    && composer install \
+    --no-interaction \
+    --no-plugins \
+    --no-scripts \
+    --prefer-dist \
+    --no-progress
 
 COPY ./services/ingestion/server.php .
 COPY ./services/ingestion/phpunit.xml ./
