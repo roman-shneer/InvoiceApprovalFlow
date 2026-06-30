@@ -1,0 +1,10 @@
+apiVersion: dapr.io/v1alpha1
+kind: Subscription
+metadata:
+  name: invoice-submitted-subscription
+spec:
+  pubsubname: approval-pubsub
+  topic: invoice.submitted
+  route: /api/v1/rules-engine
+scopes:
+- governance-service
