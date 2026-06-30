@@ -1,0 +1,92 @@
+networks:
+  approval-flow-net:
+    driver: bridge
+
+services:
+  # INFRASTRUCTURE #
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "6379:6379"
+    networks:
+      - approval-flow-net
+
+  mongodb-db:
+    image: mongo:6.0
+    container_name: mongodb-db
+    command: [ "--replSet", "rs0", "--bind_ip_all" ]
+    hostname: mongodb-db
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_DB}
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongo_data:/data/db
+    networks:
+      - approval-flow-net
+
+  dapr-placement:
+    image: "daprio/placement:1.13.0"
+    command: [ "/placement", "-port", "50005" ]
+    ports:
+      - "50005:50005"
+    networks:
+      - approval-flow-net
+
+  api-gateway:
+    image: envoyproxy/envoy:v1.28.0
+    volumes:
+      - ./gateway/envoy.yaml:/etc/envoy/envoy.yaml
+    ports:
+      - "8000:8000"
+    depends_on:
+      - ingestion-service
+    networks:
+      - approval-flow-net
+
+  # MICROSERVICES #
+
+  ### Ingestion Service ###
+  ingestion-service:
+    build:
+      context: .
+      dockerfile: ./services/ingestion/Dockerfile
+    ports:
+      - "8001:8001"
+    networks:
+      - approval-flow-net
+    depends_on:
+      - mongodb-db
+      - redis
+
+  ingestion-dapr-sidecar:
+    image: "daprio/daprd:1.13.0"
+    command: [ "/daprd", "--app-id", "ingestion-service", "--app-port", "8001", "--app-channel-address", "ingestion-service", "--placement-host-address", "dapr-placement:50005", "--components-path", "/dapr/components" ]
+    volumes:
+      - ./dapr/components:/dapr/components
+      - ./dapr:/dapr
+    depends_on:
+      - dapr-placement
+      - ingestion-service
+    networks:
+      - approval-flow-net
+
+  ### Ollama service ###
+  ollama-service:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama_data:/root/.ollama
+    networks:
+      - approval-flow-net
+  ### Ollama model ###
+  ollama-model-puller:
+    image: curlimages/curl:latest
+    networks:
+      - approval-flow-net
+    depends_on:
+      - ollama-service
+    restart: "no"
+    entrypoint: [ "sh", "-c", "until curl -s http://ollama-service:11434/api/tags > /dev/null; do echo 'Waiting for Ollama...'; sleep 5; done; echo 'Ollama is up! Pulling llama3...'; curl -X POST http://ollama-service:11434/api/pull -d '{\"name\": \"llama3\"}'" ]

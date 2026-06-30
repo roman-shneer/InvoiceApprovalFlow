@@ -21,39 +21,38 @@ The system uses containerized microservices communicating via the **Dapr (Distri
 
 ```mermaid
 graph TD
-    Client[Web UI Dashboard] -->|HTTP / gRPC Requests| Gateway[API Gateway / Rate Limiting]
+    Client[Web UI Dashboard] -->|HTTP / gRPC Requests| Gateway[API Gateway]
     ManagerUI[Management Backoffice Vue 3] -->|Direct API Requests| Management[Management Service Node.js]
     
-    subgraph Containerized Microservices Container
+    subgraph Containerized Microservices
         Gateway -->|Ingest Stream| Ingestion[Ingestion Service PHP Swoole]
-        Gateway -->|Review State| Governance[Governance & AI Service]
-        Gateway -->|Process Ledger| Payment[Payment Service]
+        Gateway -->|Review State| Governance[Governance Service Node.js]
     end
 
     subgraph Dapr Architectural Layer
         Ingestion <-->|Sidecar IPC| Dapr1((Dapr Sidecar))
         Governance <-->|Sidecar IPC| Dapr2((Dapr Sidecar))
-        Payment <-->|Sidecar IPC| Dapr3((Dapr Sidecar))
+        Management <-->|Sidecar IPC| Dapr3((Dapr Sidecar))
     end
 
     subgraph Infrastructure Components
-        Dapr1 -.->|State Store| Redis[(Redis High-Speed Buffer)]
-        Dapr2 -.->|State & PubSub| Redis
-        Dapr3 -.->|State & PubSub| Redis
-        Dapr2 -.->|Audit Trails & RAG| DB[(PostgreSQL Store)]
+        Dapr1 -.->|State Store| Redis[(Redis Buffer)]
+        Dapr2 -.->|PubSub: invoice.submitted| Redis
+        Dapr2 -->|Service Invocation: api/v1/policies| Dapr3
+        Dapr2 -.->|Audit Trails & RAG| DB[(MongoDB Document Store)]
         Dapr3 -.->|Transaction Ledger| DB
-        Management -.->|Direct SQL/Analytical Joins| DB
+        Management -.->|Direct NoSQL Aggregations / Lookup| DB
     end
 
     subgraph Local Secure AI Boundary
-        Governance -->|Local HTTP API Inference| Ollama[Ollama Service: Llama 3]
+        Governance -->|Local HTTP API| Ollama[Ollama Service: Llama 3]
     end
 ```
 
 ### Microservice Directory
 1. **Ingestion Service (PHP Swoole):** Exposes a high-performance, non-blocking input boundary using an event-driven event loop. It validates data structures, processes incoming headers for double-submission keys, and publishes raw events instantly to the Redis buffer via Dapr.
 2. **Governance & AI Service (Node.js + Ollama):** Houses the AI orchestration agents, executes local rule verification algorithms, structures and updates the Human-in-the-Loop review queues, and stores persistent lifecycle logs. It interacts with the local Ollama instance for offline LLM evaluation.
-3. **Management Service (Node.js & Vue 3):** Administrative backoffice. The Node.js backend bypasses Dapr abstractions to run complex analytical SQL queries, invoice statistics tracking, and policy configuration directly against PostgreSQL. The Vue 3 frontend renders the manager's operational dashboards.
+3. **Management Service (Node.js & Vue 3):** Administrative backoffice. The Node.js backend bypasses Dapr abstractions to run complex analytical NoSQL aggregations, pipeline metrics, and policy configurations directly against MongoDB. The Vue 3 frontend renders the manager's operational dashboards
 4. **Payment Service:** Controls corporate asset movement. It tracks ledger allocations, communicates with mock banking networks, and operates distributed consensus states.
 
 ---
