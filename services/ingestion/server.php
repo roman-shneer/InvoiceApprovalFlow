@@ -54,9 +54,7 @@ $server->on("Request", function (Request $request, Response $response) {
         return;
     }
 
-    /**
-     * FIX 3: Aligned endpoint URI with docs/ARCHITECTURE.md specs (/expenses instead of /invoices)
-     */
+  
     if ($request->server['request_uri'] !== '/api/v1/expenses' || $request->server['request_method'] !== 'POST') {
         $response->status(404);
         $response->end(json_encode(["error" => "Not Found"]));
