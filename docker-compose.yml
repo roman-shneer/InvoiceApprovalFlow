@@ -38,7 +38,7 @@ services:
       start_period: 10s
     command: >
       sh -c "
-        mongod --replSet rs0 --bind_ip_all &
+        mongod --replSet rs0 --bind_ip_all --quiet &
         until mongosh --eval 'db.adminCommand({ping:1})' >/dev/null 2>&1; do
           echo 'Waiting for MongoDB...' && sleep 2;
         done &&
@@ -100,10 +100,57 @@ services:
       - ./dapr/components:/dapr/components
       - ./dapr:/dapr
     depends_on:
-      - dapr-placement
-      - ingestion-service
+      mongodb-db:
+        condition: service_healthy # ← ждёт пока MongoDB пройдёт healthcheck
+      governance-service:
+        condition: service_started
+      dapr-placement:
+        condition: service_started
     networks:
       - approval-flow-net
+    ## Governance & AI Service ##
+    ## Governance & AI Service ##
+  governance-service:
+    build:
+      context: .
+      dockerfile: ./services/governance/Dockerfile
+    ports:
+      - "8002:8002"
+    container_name: governance-service
+    hostname: governance-service
+    environment:
+      - APP_PORT=8002
+      - DAPR_HTTP_HOST=127.0.0.1
+      - DAPR_HTTP_PORT=3500
+      - MONGO_DB=approvalflow
+    volumes:
+      - ./services/governance:/app
+      - /app/node_modules
+    depends_on:
+      redis:
+        condition: service_started
+      mongodb-db:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - approval-flow-net
+
+  ## Governance & AI Service DAPR ##
+  governance-dapr-sidecar:
+    image: "ghcr.io/dapr/daprd:1.15.4"
+    container_name: governance-dapr-sidecar
+    command: [ "/daprd", "--app-id", "governance-service", "--app-port", "8002", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components" ]
+    volumes:
+      - ./dapr/components:/dapr/components
+      - ./dapr:/dapr
+    depends_on:
+      mongodb-db:
+        condition: service_healthy
+      governance-service:
+        condition: service_started
+      dapr-placement:
+        condition: service_started
+    network_mode: "service:governance-service"
 
   ### Ollama service ###
   ollama-service:
