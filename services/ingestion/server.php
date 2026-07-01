@@ -54,7 +54,7 @@ $server->on("Request", function (Request $request, Response $response) {
         return;
     }
 
-  
+   
     if ($request->server['request_uri'] !== '/api/v1/expenses' || $request->server['request_method'] !== 'POST') {
         $response->status(404);
         $response->end(json_encode(["error" => "Not Found"]));
@@ -65,6 +65,7 @@ $server->on("Request", function (Request $request, Response $response) {
     logMessage("INFO", $correlationId, "Received raw invoice submission request.");
 
     $body = json_decode($request->rawContent(), true);
+    
     if (!$body || !isset($body['id'])) {
         $response->status(400);
         $response->end(json_encode(["error" => "Invalid schema. Required: id"]));
@@ -98,12 +99,8 @@ $server->on("Request", function (Request $request, Response $response) {
         return;
     }
 
-    /**
-     * FIX 2: Aligned tracking_id generation.
-     * We map the incoming test ID (e.g. 'INV-1010') as our primary tracking_id 
-     * to keep deterministic tracking fully integrated with your input scenarios.
-     */
-    $trackingId = $body['id']; 
+  
+    $trackingId = $body['id']?? uniqid('track_', true); 
 
     // Dapr State Store: Save Processing Key
     $statePostClient = new Client(DAPR_HOST, DAPR_PORT);
@@ -141,7 +138,7 @@ $server->on("Request", function (Request $request, Response $response) {
         "idempotency_key" => $idempotencyKey,
         "correlation_id"  => $correlationId,
         "submitted_at"    => date(DATE_ATOM),
-        "id"              => $trackingId,
+        "tracking_id"     => $trackingId,
         "submitter"       => $body['submitter']      ?? 'anonymous@example.com',
         "department"      => $body['department']     ?? 'unassigned',
         "vendor"          => $vendor,
@@ -155,7 +152,9 @@ $server->on("Request", function (Request $request, Response $response) {
         "receiptPresent"  => (bool)($body['receiptPresent'] ?? true),
         "date"            => $body['date']           ?? date('Y-m-d'),
         "notes"           => $body['notes']          ?? '',
-        "scenario"        => $body['scenario']       ?? 'standard-ingest'
+        "scenario"        => $body['scenario']       ?? 'standard-ingest',     
+        "expected"        => $body['expected']       ?? null,
+        "note"           => $body['note']           ?? null
     ];
 
     // Dapr Pub/Sub: Publish Event
