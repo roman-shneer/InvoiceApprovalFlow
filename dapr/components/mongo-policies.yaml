@@ -1,0 +1,33 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: mongo-policies
+spec:
+  type: state.mongodb
+  version: v1
+  metadata:
+    - name: host
+      value: "mongodb-db:27017"
+      
+    - name: connectionString
+      secretKeyRef:
+        name: mongodb-connection-string
+        key: mongodb-connection-string  
+
+    - name: databaseName
+      value: "approvalflow"
+    
+    
+    - name: collectionName
+      value: "policies"
+
+    - name: writeConcern
+      value: "majority"
+
+    - name: readConcern
+      value: "majority"
+
+    - name: operationTimeout
+      value: "5s"
+  auth:
+    secretStore: approval-secret-store
