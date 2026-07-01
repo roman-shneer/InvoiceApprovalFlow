@@ -1,0 +1,12 @@
+{
+    "name": "governance-service",
+    "version": "1.0.0",
+    "description": "AI Governance Agent on Node.js",
+    "main": "app.js",
+    "type": "commonjs",
+    "dependencies": {
+        "@dapr/dapr": "^3.4.0",
+        "express": "^4.19.2",
+        "ollama": "^0.6.3"
+    }
+}

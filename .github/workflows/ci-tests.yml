@@ -1,0 +1,29 @@
+name: CI Infrastructure and Service Testing
+
+
+on:
+  push:
+    branches: [ "develop" ]
+  pull_request:
+    branches: [ "develop" ]
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    
+    - name: Checkout repository code
+      uses: actions/checkout@v4
+
+    
+    - name: Create secrets mock placeholder
+      run: |
+        mkdir -p dapr
+        echo '{"postgres-connection-string":"mongodb://localhost:27017","redis-password":""}' > dapr/secrets.json
+
+    
+    - name: Build and Run Dockerized PHP Unit Tests
+      run: |
+        docker compose build --no-cache ingestion-service
+##
