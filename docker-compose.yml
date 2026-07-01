@@ -1,9 +1,12 @@
+### NETWORK BRIDGE ###
 networks:
   approval-flow-net:
     driver: bridge
 
 services:
   # INFRASTRUCTURE #
+
+  ## REDIS ##
   redis:
     image: redis:7-alpine
     command: redis-server --requirepass ${REDIS_PASSWORD}
@@ -12,10 +15,10 @@ services:
     networks:
       - approval-flow-net
 
+  ## MONGODB ##
   mongodb-db:
     image: mongo:6.0
     container_name: mongodb-db
-    command: [ "--replSet", "rs0", "--bind_ip_all" ]
     hostname: mongodb-db
     environment:
       MONGO_INITDB_DATABASE: ${MONGO_DB}
@@ -23,9 +26,38 @@ services:
       - "27017:27017"
     volumes:
       - ./mongo_data:/data/db
+      - ./dapr/init-collections.js:/init-collections.js:ro
     networks:
       - approval-flow-net
+    restart: always
+    healthcheck:
+      test: [ "CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    command: >
+      sh -c "
+        mongod --replSet rs0 --bind_ip_all &
+        until mongosh --eval 'db.adminCommand({ping:1})' >/dev/null 2>&1; do
+          echo 'Waiting for MongoDB...' && sleep 2;
+        done &&
+        echo 'MongoDB is up!' &&
+        mongosh --quiet --eval '
+          try {
+            rs.initiate({_id:\"rs0\",members:[{_id:0,host:\"mongodb-db:27017\"}]});
+            print(\"Replica set initiated\");
+          } catch(e) {
+            print(\"rs.initiate skipped: \" + e.message);
+          }
+        ' &&
+        sleep 2 &&
+        mongosh --quiet < /init-collections.js &&
+        echo 'Init complete' &&
+        wait
+      "
 
+  ##Dapr Placement is the Dapr actor registration service. All sidecars register here to know where Dapr actors live in the cluster. Without it, Dapr won't work.
   dapr-placement:
     image: "daprio/placement:1.13.0"
     command: [ "/placement", "-port", "50005" ]
@@ -34,6 +66,7 @@ services:
     networks:
       - approval-flow-net
 
+  #Envoy is a reverse proxy. It accepts all incoming requests on port 8000 and routes them to the appropriate microservices. depends_on ensures that the ingestion-service starts before gateway. 
   api-gateway:
     image: envoyproxy/envoy:v1.28.0
     volumes:
