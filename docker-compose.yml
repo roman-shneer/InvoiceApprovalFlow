@@ -211,3 +211,41 @@ services:
         condition: service_started
     restart: on-failure
     network_mode: "service:management-service"
+
+  ### Payment Service ###
+  payment-service:
+    build:
+      context: .
+      dockerfile: ./services/payment/Dockerfile
+    container_name: payment-service
+    ports:
+      - "8010:8010"
+    environment:
+      - APP_PORT=8010
+      - DAPR_HTTP_HOST=127.0.0.1
+      - DAPR_HTTP_PORT=3500
+    volumes:
+      - ./services/payment:/app
+      - /app/node_modules
+    depends_on:
+      mongodb-db:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - approval-flow-net
+
+  payment-dapr-sidecar:
+    image: "ghcr.io/dapr/daprd:1.15.4"
+    container_name: payment-dapr-sidecar
+    command: [ "/daprd", "--app-id", "payment-service", "--app-port", "8010", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components" ]
+    volumes:
+      - ./dapr/components:/dapr/components
+      - ./dapr:/dapr
+    depends_on:
+      mongodb-db:
+        condition: service_healthy
+      payment-service:
+        condition: service_started
+      dapr-placement:
+        condition: service_started
+    network_mode: "service:payment-service"
