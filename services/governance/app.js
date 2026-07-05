@@ -30,13 +30,14 @@ const server = new DaprServer({
 });
 
 async function start() {
-    const activeRules = await getPolicies();
+
 
     await server.pubsub.subscribe(
         "approval-pubsub",
         "invoice.submitted",
         async (eventData) => {
             try {
+
                 // Extract raw invoice payload from Dapr CloudEvent envelope
                 const invoice = eventData && eventData.data ? eventData.data : eventData;
                 const trackingId = invoice.tracking_id || invoice.id || "unknown";
@@ -57,6 +58,7 @@ async function start() {
                     const total = parseFloat(invoice.total || 0);
 
                     try {
+                        const activeRules = await getPolicies();
                         // 1. Check hard stop rules
                         const hardStop = checkHardStops(invoice, activeRules);
                         if (hardStop.triggered) {
