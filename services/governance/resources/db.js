@@ -25,28 +25,55 @@ async function getPolicies() {
 }
 
 
-async function saveAuditRecord(trackingId, correlationId, invoice, recommendation, reason, triggered_rules) {
-    const auditRecord = {
-        ...invoice,
-        status: recommendation,
-        audit_metadata: {
+async function saveAuditRecord(trackingId, correlationId, recommendation, reason, triggered_rules) {
+    try {
+        const existingRecord = await client.state.get("mongo-invoices", trackingId);
+        if (!existingRecord) {
+            logCompliance("ERROR", trackingId, correlationId, `No existing invoice record found for tracking_id ${trackingId}.`);
+            return;
+        }
+
+        const invoice = typeof existingRecord === 'string' ? JSON.parse(existingRecord) : existingRecord;
+        console.log("recommendation", recommendation);
+        invoice.status = recommendation;
+        invoice.audit_metadata = {
+            ...(invoice.audit_metadata || {}),
             checked_at: new Date().toISOString(),
             reason: reason,
             triggered_rules: triggered_rules || []
-        }
-    };
+        };
 
-    try {
         await client.state.save("mongo-invoices", [
             {
                 key: trackingId,
-                value: auditRecord
+                value: invoice
             }
         ]);
-        logCompliance("INFO", trackingId, correlationId, `Successfully persisted signed audit record into MongoDB store.`);
+        logCompliance("INFO", trackingId, correlationId, `Successfully updated audit fields on MongoDB invoice record.`);
     } catch (dbErr) {
-        logCompliance("ERROR", trackingId, correlationId, `Failed to save audit record in MongoDB: ${dbErr.message}`);
+        logCompliance("ERROR", trackingId, correlationId, `Failed to update audit record in MongoDB: ${dbErr.message}`);
     }
 }
 
-module.exports = { getPolicies, saveAuditRecord };
+
+async function saveInvoiceToMongo(invoice) {
+
+    const pendingInvoice = {
+        ...invoice,
+        status: "PENDING",
+        createdAt: new Date().toISOString()
+    };
+    try {
+        await client.state.save("mongo-invoices", [
+            {
+                key: invoice.tracking_id,
+                value: pendingInvoice
+            }
+        ]);
+        logCompliance("INFO", invoice.tracking_id, invoice.correlation_id, `Successfully registered record into MongoDB store.`);
+    } catch (dbErr) {
+        logCompliance("ERROR", invoice.tracking_id, invoice.correlation_id, `Failed to save audit record in MongoDB: ${dbErr.message}`);
+    }
+}
+
+module.exports = { getPolicies, saveAuditRecord, saveInvoiceToMongo };
