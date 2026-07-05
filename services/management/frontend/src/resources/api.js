@@ -216,8 +216,8 @@ class Api {
         return await this.sendWsRequest('delete-policy', { rule_id });
     }
 
-    async SavePolicy(policy) {
-        return await this.sendWsRequest('save-policy', { policy });
+    async SavePolicy(policy, originalRuleId = null) {
+        return await this.sendWsRequest('save-policy', { policy, original_rule_id: originalRuleId });
     }
 
     async GetUsers() {

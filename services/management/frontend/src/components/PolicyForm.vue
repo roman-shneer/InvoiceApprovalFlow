@@ -20,7 +20,7 @@
                 </tr>
                 <tr>
                     <td>Rule</td>
-                    <td><textarea v-model="policyToEdit.rule_text"/></td>
+                    <td><textarea v-model="policyToEdit.rule_text"></textarea></td>
                 </tr>
                 <tr>
                     <td>Status</td>
