@@ -212,7 +212,7 @@ async function start() {
                         if (user.role !== 'approver') {
                             return sendSocketResponse(socket, requestId, null, 'Unauthorized');
                         }
-                        const approved = await invoiceManager.updateInvoiceStatus(data.key, 'APPROVED');
+                        const approved = await invoiceManager.updateInvoiceStatus(data.tracking_id || data.state_key || data.key, 'APPROVED');
                         if (approved) {
                             broadcastToClients({ type: 'invoice-updated', invoice: approved });
                         }
@@ -222,7 +222,7 @@ async function start() {
                         if (user.role !== 'approver') {
                             return sendSocketResponse(socket, requestId, null, 'Unauthorized');
                         }
-                        const rejected = await invoiceManager.updateInvoiceStatus(data.key, 'REJECTED');
+                        const rejected = await invoiceManager.updateInvoiceStatus(data.tracking_id || data.state_key || data.key, 'REJECTED');
                         if (rejected) {
                             broadcastToClients({ type: 'invoice-updated', invoice: rejected });
                         }

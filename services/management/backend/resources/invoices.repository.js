@@ -65,6 +65,13 @@ class InvoicesRepository {
         let actualKey = key;
         let rawInvoice = await this.daprClient.state.get(STATE_STORE_NAME, actualKey);
         if (!rawInvoice && typeof key === 'string') {
+            const normalizedKey = key.includes('||') ? key.split('||').pop() : key;
+            if (normalizedKey !== actualKey) {
+                actualKey = normalizedKey;
+                rawInvoice = await this.daprClient.state.get(STATE_STORE_NAME, actualKey);
+            }
+        }
+        if (!rawInvoice && typeof key === 'string') {
             console.log("updateInvoiceStatus: direct get failed, trying tracking_id fallback", key);
             const response = await this.daprClient.state.query(STATE_STORE_NAME, {
                 filter: {

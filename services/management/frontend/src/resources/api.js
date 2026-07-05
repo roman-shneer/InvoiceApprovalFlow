@@ -209,11 +209,13 @@ class Api {
     }
 
     async ApproveInvoice(invoice) {
-        return await this.sendWsRequest('approve-invoice', { key: invoice.key });
+        const tracking_id = invoice.tracking_id || invoice.id || invoice.key?.split('||').pop();
+        return await this.sendWsRequest('approve-invoice', { tracking_id, state_key: invoice.key });
     }
 
     async RejectInvoice(invoice) {
-        return await this.sendWsRequest('reject-invoice', { key: invoice.key });
+        const tracking_id = invoice.tracking_id || invoice.id || invoice.key?.split('||').pop();
+        return await this.sendWsRequest('reject-invoice', { tracking_id, state_key: invoice.key });
     }
 
 
