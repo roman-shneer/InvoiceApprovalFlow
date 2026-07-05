@@ -15,6 +15,7 @@ This index documents the historical context, concrete decisions, and architectur
 | **[ADR 0007](0007-dapr-adoption.md)** | Adoption of Dapr for Microservice Orchestration | `Accepted` | System Mesh / Sidecar |
 | **[ADR 0008](0008-payment-saga.md)** | Mock Payment Service Architecture & Saga Flow | `Accepted` | Payment Simulation |
 | **[ADR 0009](0009-mongodb-invoice-store.md)** | Selection of MongoDB for Invoice Document Storage | `Accepted` | Document Store NoSQL |
+| **[ADR 0010](0010-ingestion-nodejs.md)** | Implementation of Ingestion Service using Node.js | `Accepted` | Architecture Migration |
 
 ## 📐 Template Standard
 Every ADR added to this directory must strictly comply with the Michael Nygard pattern specification:
