@@ -56,7 +56,8 @@ export default {
         return {
             invoice:"",
             invoices:[],
-            showInvoice:null
+            showInvoice:null,
+            eventHandlers: {}
         }
     },
     methods:{
@@ -104,8 +105,28 @@ export default {
             console.log("GetInvoices",result);
             this.invoices=result;
         },
-        onInvoiceEvent(){
-            this.getInvoices();
+        applyNotificationToLocalInvoices(payload){
+            if (!payload || !payload.tracking_id) {
+                return false;
+            }
+            const updated = this.invoices.map((invoice) => {
+                if (invoice.tracking_id === payload.tracking_id || invoice.id === payload.tracking_id) {
+                    return { ...invoice, status: payload.status, audit_metadata: payload.audit_metadata || invoice.audit_metadata };
+                }
+                return invoice;
+            });
+            const found = updated.some((invoice, index) => invoice.tracking_id === payload.tracking_id && invoice.status === payload.status);
+            if (found) {
+                this.invoices = updated;
+                return true;
+            }
+            return false;
+        },
+        onInvoiceEvent(payload){
+            console.log('Invoice notification received', payload);
+            if (!this.applyNotificationToLocalInvoices(payload)) {
+                this.getInvoices();
+            }
         },
         renderDate(d){            
             const isoDateStr= d.toLocaleString();            
@@ -117,17 +138,25 @@ export default {
     mounted(){
         this.getInvoices();
         if (this.api && typeof this.api.subscribe === 'function') {
-            this.api.subscribe('invoice-created', this.onInvoiceEvent);
-            this.api.subscribe('invoice-updated', this.onInvoiceEvent);
+            this.eventHandlers.created = this.onInvoiceEvent.bind(this);
+            this.eventHandlers.updated = this.onInvoiceEvent.bind(this);
+            this.eventHandlers.processed = this.onInvoiceEvent.bind(this);
+            this.api.subscribe('invoice-created', this.eventHandlers.created);
+            this.api.subscribe('invoice-updated', this.eventHandlers.updated);
+            this.api.subscribe('invoice-processed', this.eventHandlers.processed);
             if (typeof this.api.connectWebSocket === 'function') {
                 this.api.connectWebSocket();
+            }
+            if (typeof this.api.connectNotificationStream === 'function') {
+                this.api.connectNotificationStream();
             }
         }
     },
     beforeUnmount(){
         if (this.api && typeof this.api.unsubscribe === 'function') {
-            this.api.unsubscribe('invoice-created', this.onInvoiceEvent);
-            this.api.unsubscribe('invoice-updated', this.onInvoiceEvent);
+            if (this.eventHandlers.created) this.api.unsubscribe('invoice-created', this.eventHandlers.created);
+            if (this.eventHandlers.updated) this.api.unsubscribe('invoice-updated', this.eventHandlers.updated);
+            if (this.eventHandlers.processed) this.api.unsubscribe('invoice-processed', this.eventHandlers.processed);
         }
     }
 }

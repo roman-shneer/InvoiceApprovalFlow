@@ -10,6 +10,14 @@ const { getPolicies, saveAuditRecord, saveInvoiceToMongo } = require('./resource
 const appPort = "8002";
 const daprHost = "127.0.0.1";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
+const PUB_SUB_NAME = "approval-pubsub";
+const NOTIFICATION_TOPIC = "invoice.processed";
+
+const daprClient = new DaprClient({
+    daprHost: daprHost,
+    daprPort: daprPort,
+    communicationTimeoutMs: 300000
+});
 
 const server = new DaprServer({
     serverHost: "0.0.0.0",
@@ -48,6 +56,7 @@ async function start() {
                                 `Hard stop [${hardStop.rule}]: ${hardStop.reason}`);
 
                             await saveAuditRecord(trackingId, correlationId, "HUMAN_REVIEW", hardStop.reason, [hardStop.rule]);
+                            await publishInvoiceProcessedNotification(invoice, 'HUMAN_REVIEW', false);
                             return;
                         }
 
@@ -73,6 +82,10 @@ async function start() {
                             finalResult.triggered_rules || []
                         );
 
+                        const finalStatus = finalResult.recommendation === 'AUTO_APPROVE' ? 'APPROVED' : 'HUMAN_REVIEW';
+                        const aiApproved = finalResult.recommendation === 'AUTO_APPROVE';
+                        await publishInvoiceProcessedNotification(invoice, finalStatus, aiApproved);
+
                     } catch (error) {
                         console.error("Dapr State Save Critical Failure:", error.message);
                         return;
@@ -97,5 +110,28 @@ async function start() {
 }
 
 
+
+async function publishInvoiceProcessedNotification(pendingInvoice, finalStatus, aiApproved) {
+    if (!pendingInvoice) {
+        console.warn('publishInvoiceProcessedNotification: missing pendingInvoice');
+        return;
+    }
+
+    const notificationPayload = {
+        tracking_id: pendingInvoice.tracking_id || pendingInvoice.id || 'unknown',
+        correlation_id: pendingInvoice.correlation_id || 'unknown',
+        status: finalStatus,
+        reason: aiApproved ? 'AI Auto Approved' : 'Requires Human Review',
+        amount: pendingInvoice.total,
+        timestamp: new Date().toISOString()
+    };
+
+    try {
+        await daprClient.pubsub.publish(PUB_SUB_NAME, NOTIFICATION_TOPIC, notificationPayload);
+        console.log(`[${notificationPayload.tracking_id}] Published invoice processed notification to ${NOTIFICATION_TOPIC}`);
+    } catch (err) {
+        console.error(`[${notificationPayload.tracking_id}] Failed to publish invoice processed notification:`, err.message);
+    }
+}
 
 start().catch(console.error);

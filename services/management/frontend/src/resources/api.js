@@ -3,6 +3,7 @@ class Api {
     constructor() {
         this.token = localStorage.getItem("token");
         this.ws = null;
+        this.eventSource = null;
         this.subscribers = {};
         this.pendingRequests = new Map();
         this.connecting = null;
@@ -15,8 +16,40 @@ class Api {
             this.ws.close();
             this.ws = null;
         }
+        if (this.eventSource) {
+            this.eventSource.close();
+            this.eventSource = null;
+        }
         this.pendingRequests.forEach(({ reject }) => reject(new Error('WebSocket closed')));
         this.pendingRequests.clear();
+    }
+
+    connectSseNotifications() {
+        if (this.eventSource) {
+            return;
+        }
+
+        const sseUrl = `${window.location.origin}/api/v1/notifications/stream`;
+        console.log('[SSE] connecting to', sseUrl);
+        this.eventSource = new EventSource(sseUrl);
+
+        this.eventSource.onopen = () => {
+            console.log('[SSE] connected to notification stream');
+        };
+
+        this.eventSource.onmessage = (event) => {
+            try {
+                const notification = JSON.parse(event.data);
+                console.log('[SSE] received notification', notification);
+                this.notifySubscribers('invoice-processed', notification);
+            } catch (err) {
+                console.error('[SSE] invalid event data', err);
+            }
+        };
+
+        this.eventSource.onerror = (err) => {
+            console.error('[SSE] connection error', err);
+        };
     }
 
     subscribe(eventType, callback) {
@@ -211,6 +244,15 @@ class Api {
     async ApproveInvoice(invoice) {
         const tracking_id = invoice.tracking_id || invoice.id || invoice.key?.split('||').pop();
         return await this.sendWsRequest('approve-invoice', { tracking_id, state_key: invoice.key });
+    }
+
+    async RejectInvoice(invoice) {
+        const tracking_id = invoice.tracking_id || invoice.id || invoice.key?.split('||').pop();
+        return await this.sendWsRequest('reject-invoice', { tracking_id, state_key: invoice.key });
+    }
+
+    async connectNotificationStream() {
+        this.connectSseNotifications();
     }
 
     async RejectInvoice(invoice) {

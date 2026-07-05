@@ -48,6 +48,127 @@ async function start() {
         credentials: true
     }));
 
+    const activeSseClients = new Map();
+
+    async function resolveInvoiceForNotification(eventData) {
+        const candidateId = eventData?.tracking_id || eventData?.trackingId || eventData?.id || eventData?.invoice?.tracking_id || eventData?.invoice?.id;
+        if (candidateId) {
+            try {
+                const raw = await daprClient.state.get('mongo-invoices', candidateId);
+                if (raw) {
+                    return typeof raw === 'string' ? JSON.parse(raw) : raw;
+                }
+            } catch (err) {
+                console.warn(`[Notification Channel] failed to load invoice by id ${candidateId}:`, err.message);
+            }
+
+            try {
+                const response = await daprClient.state.query('mongo-invoices', {
+                    filter: {
+                        OR: [
+                            { EQ: { tracking_id: candidateId } },
+                            { EQ: { id: candidateId } }
+                        ]
+                    },
+                    page: { limit: 1 }
+                });
+                const result = response?.results?.[0];
+                if (result) {
+                    return result.data || result.value;
+                }
+            } catch (err) {
+                console.warn(`[Notification Channel] fallback query failed for ${candidateId}:`, err.message);
+            }
+        }
+
+        if (eventData && (eventData.tracking_id || eventData.id)) {
+            return eventData;
+        }
+
+        return null;
+    }
+
+    app.get('/api/v1/notifications/stream', (req, res) => {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.flushHeaders();
+        res.write('retry: 10000\n\n');
+
+        const clientId = Date.now().toString();
+        activeSseClients.set(clientId, res);
+        console.log(`[Notification Channel] Client ${clientId} connected to SSE stream.`);
+
+        const keepAlive = setInterval(() => {
+            if (!res.finished) {
+                res.write(': keep-alive\n\n');
+            }
+        }, 25000);
+
+        req.on('close', () => {
+            clearInterval(keepAlive);
+            activeSseClients.delete(clientId);
+            console.log(`[Notification Channel] Client ${clientId} disconnected from SSE stream.`);
+        });
+    });
+
+    app.get('/dapr/subscribe', (req, res) => {
+        res.json([
+            {
+                pubsubname: 'approval-pubsub',
+                topic: 'invoice.processed',
+                route: '/events/invoice-processed'
+            }
+        ]);
+    });
+
+    app.post('/events/invoice-processed', express.text({ type: '*/*' }), async (req, res) => {
+        const rawBody = req.body;
+        let payload;
+        if (typeof rawBody === 'string' && rawBody.length > 0) {
+            try {
+                payload = JSON.parse(rawBody);
+            } catch (err) {
+                console.warn('[Notification Channel] failed to parse raw request body as JSON:', err.message);
+                payload = undefined;
+            }
+        } else if (typeof rawBody === 'object' && rawBody !== null) {
+            payload = rawBody;
+        }
+
+        let invoice = payload?.data?.data || payload?.data || payload;
+
+        console.log('invoice-processed.content-type', req.headers['content-type']);
+        console.log('invoice-processed.rawBody', rawBody);
+        console.log('invoice-processed.payload', payload);
+
+        let trackingId = invoice?.tracking_id || invoice?.trackingId || invoice?.id || 'unknown';
+
+        if (!invoice || trackingId === 'unknown') {
+            console.warn('[Notification Channel] invoice.processed payload missing tracking_id, resolving from store');
+            const resolvedInvoice = await resolveInvoiceForNotification(invoice || payload);
+            if (resolvedInvoice) {
+                invoice = resolvedInvoice;
+                trackingId = invoice.tracking_id || invoice.id || 'unknown';
+            }
+        }
+
+        if (trackingId === 'unknown') {
+            console.warn('[Notification Channel] Failed to resolve invoice tracking_id from payload or store');
+        }
+
+        console.log(`[Notification Channel] Received invoice.processed for ${trackingId}. Broadcasting to SSE clients.`);
+
+        const sseMessage = `data: ${JSON.stringify(invoice)}\n\n`;
+        for (const [clientId, clientResponse] of activeSseClients.entries()) {
+            clientResponse.write(sseMessage);
+        }
+
+        res.status(200).send();
+    });
+
     const server = http.createServer(app);
     const wss = new WebSocket.Server({ server, path: '/ws' });
 
