@@ -8,7 +8,7 @@ services:
 
   ## REDIS ##
   redis:
-    image: redis:7-alpine
+    image: redis/redis-stack-server:latest
     command: redis-server --requirepass ${REDIS_PASSWORD}
     ports:
       - "6379:6379"
@@ -90,8 +90,7 @@ services:
     networks:
       - approval-flow-net
     depends_on:
-      - mongodb-db
-      - redis
+      - ingestion-dapr-sidecar
 
   ingestion-dapr-sidecar:
     image: "daprio/daprd:1.13.0"
@@ -108,7 +107,6 @@ services:
         condition: service_started
     networks:
       - approval-flow-net
-    ## Governance & AI Service ##
     ## Governance & AI Service ##
   governance-service:
     build:
