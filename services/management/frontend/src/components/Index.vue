@@ -33,6 +33,7 @@ const checkToken = async () => {
       user.value = data.user;
       isAuthenticated.value = true;
       await api.connectWebSocket();
+      api.connectNotificationStream();
     } 
   } catch (error) {
     console.error("Error checking auth:", error);
@@ -46,6 +47,7 @@ const sendLoginForm = async () => {
       user.value = result.user;
       isAuthenticated.value = true;
       await api.connectWebSocket();
+      api.connectNotificationStream();
     } else {
       alert("Invalid username or password");
     }
