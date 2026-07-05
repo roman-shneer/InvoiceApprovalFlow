@@ -29,5 +29,8 @@ spec:
 
     - name: operationTimeout
       value: "5s"
+      
+    - name: keyPrefix
+      value: "none"
   auth:
     secretStore: approval-secret-store
