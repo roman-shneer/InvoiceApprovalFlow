@@ -25,42 +25,10 @@ async function getPolicies() {
 }
 
 
-async function saveAuditRecord(trackingId, correlationId, recommendation, reason, triggered_rules) {
-    try {
-        const existingRecord = await client.state.get("mongo-invoices", trackingId);
-        if (!existingRecord) {
-            logCompliance("ERROR", trackingId, correlationId, `No existing invoice record found for tracking_id ${trackingId}.`);
-            return;
-        }
-
-        const invoice = typeof existingRecord === 'string' ? JSON.parse(existingRecord) : existingRecord;
-        console.log("recommendation", recommendation);
-        invoice.status = recommendation;
-        invoice.audit_metadata = {
-            ...(invoice.audit_metadata || {}),
-            checked_at: new Date().toISOString(),
-            reason: reason,
-            triggered_rules: triggered_rules || []
-        };
-
-        await client.state.save("mongo-invoices", [
-            {
-                key: trackingId,
-                value: invoice
-            }
-        ]);
-        logCompliance("INFO", trackingId, correlationId, `Successfully updated audit fields on MongoDB invoice record.`);
-    } catch (dbErr) {
-        logCompliance("ERROR", trackingId, correlationId, `Failed to update audit record in MongoDB: ${dbErr.message}`);
-    }
-}
-
-
 async function saveInvoiceToMongo(invoice) {
 
     const pendingInvoice = {
         ...invoice,
-        status: "PENDING",
         createdAt: new Date().toISOString()
     };
     try {
@@ -76,4 +44,4 @@ async function saveInvoiceToMongo(invoice) {
     }
 }
 
-module.exports = { getPolicies, saveAuditRecord, saveInvoiceToMongo };
+module.exports = { getPolicies, saveInvoiceToMongo };

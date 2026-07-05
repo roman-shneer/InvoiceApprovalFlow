@@ -39,10 +39,11 @@ The JSON object MUST follow this exact schema:
 - Total: ${invoice.currency || 'USD'} ${invoice.total || 0}
 - Vendor: ${invoice.vendor || 'Unknown'}
 - Receipt Present: ${invoice.receiptPresent ? 'Yes' : 'No'}`;
-    console.log("invoice.lineItems", invoice.lineItems);
+
     invoice.lineItems.map((item, index) => {
         userPrompt += `\n- Line Item ${index + 1}: Description: ${item.description || 'N/A'},Quantity: ${item.quantity || 0}, Amount: ${invoice.currency || 'USD'}${item.unitPrice || 0}`;
     });
+    console.log("systemPrompt", systemPrompt);
     console.log("User Prompt for AI:", userPrompt);
     try {
         const response = await ollama.chat({

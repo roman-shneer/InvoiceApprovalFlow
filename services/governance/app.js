@@ -5,7 +5,7 @@ const { checkHardStops } = require('./engines/checkHardStops');
 const { applyAutonomyOverride } = require('./engines/applyAutonomyOverride');
 const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
 const { logCompliance } = require('./utils/logCompliance');
-const { getPolicies, saveAuditRecord, saveInvoiceToMongo } = require('./resources/db');
+const { getPolicies, saveInvoiceToMongo } = require('./resources/db');
 
 const appPort = "8002";
 const daprHost = "127.0.0.1";
@@ -63,23 +63,31 @@ async function start() {
                             logCompliance("WARN", trackingId, correlationId, `Hard stop [${hardStop.rule}]: ${hardStop.reason}`);
 
                             invoice.status = 'HUMAN_REVIEW';
-                            await saveInvoiceToMongo(invoice); // Persist updated invoice status to Mongo
-                            await saveAuditRecord(trackingId, correlationId, "HUMAN_REVIEW", hardStop.reason, [hardStop.rule]);
+                            invoice.audit_metadata = {
+                                checked_at: new Date().toISOString(),
+                                reason: hardStop.reason,
+                                triggered_rules: [hardStop.rule]
+                            };
+
+                            await saveInvoiceToMongo(invoice); // Persist updated invoice status to Mongo                           
                             await publishInvoiceProcessedNotification(invoice, 'HUMAN_REVIEW', false);
                             return;
                         }
 
                         // 2. AI classification step
-                        let aiResult;
-                        try {
-                            aiResult = await classifyInvoiceWithLocalAI(invoice, activeRules);
-                        } catch (err) {
-                            logCompliance("ERROR", trackingId, correlationId, `AI failed: ${err.message}. Running fallback rule engine.`);
-                            aiResult = evaluateInvoiceWithAI(invoice, activeRules);
+                        let aiResult = evaluateInvoiceWithAI(invoice, activeRules);
+                        if (aiResult.recommendation == 'AUTO_APPROVE') {
+                            try {
+                                aiResult = await classifyInvoiceWithLocalAI(invoice, activeRules);
+                            } catch (err) {
+                                logCompliance("ERROR", trackingId, correlationId, `AI failed: ${err.message}. Running fallback rule engine.`);
+                            }
                         }
 
                         // 3. Apply autonomy override / threshold logic
+                        console.log("aiResult", aiResult);
                         const finalResult = applyAutonomyOverride(aiResult, invoice);
+                        console.log("finalResult", finalResult);
                         const finalStatus = finalResult.recommendation === 'AUTO_APPROVE' ? 'AUTO_APPROVE' : 'HUMAN_REVIEW';
                         const aiApproved = finalResult.recommendation === 'AUTO_APPROVE';
 
@@ -91,18 +99,14 @@ async function start() {
 
                         // 4. Final sync of invoice state
                         invoice.status = finalStatus;
-
+                        invoice.audit_metadata = {
+                            checked_at: new Date().toISOString(),
+                            reason: finalResult.reason,
+                            triggered_rules: finalResult.triggered_rules || []
+                        };
+                        console.log("save.invoice", invoice);
                         // Persist the final invoice status in MongoDB
                         await saveInvoiceToMongo(invoice);
-
-                        // Save audit history
-                        await saveAuditRecord(
-                            trackingId, correlationId,
-                            finalResult.recommendation,
-                            finalResult.reason,
-                            finalResult.triggered_rules || []
-                        );
-
                         // Publish final verdict to notification channel
                         await publishInvoiceProcessedNotification(invoice, finalStatus, aiApproved);
 
@@ -133,21 +137,11 @@ async function start() {
 
 async function publishInvoiceProcessedNotification(pendingInvoice, finalStatus, aiApproved, reason = null) {
     if (!pendingInvoice) return;
-
-    const notificationPayload = {
-        tracking_id: pendingInvoice.tracking_id || pendingInvoice.id || 'unknown',
-        correlation_id: pendingInvoice.correlation_id || 'unknown',
-        status: finalStatus,
-        reason: reason || (aiApproved ? 'AI Auto Approved' : 'Requires Human Review'),
-        amount: pendingInvoice.total,
-        timestamp: new Date().toISOString()
-    };
-
     try {
-        await daprClient.pubsub.publish(PUB_SUB_NAME, NOTIFICATION_TOPIC, notificationPayload);
-        console.log(`[${notificationPayload.tracking_id}] Published invoice processed notification to ${NOTIFICATION_TOPIC}`);
+        await daprClient.pubsub.publish(PUB_SUB_NAME, NOTIFICATION_TOPIC, pendingInvoice);
+        console.log(`[${pendingInvoice.tracking_id}] Published invoice processed notification to ${NOTIFICATION_TOPIC}`);
     } catch (err) {
-        console.error(`[${notificationPayload.tracking_id}] Failed to publish invoice processed notification:`, err.message);
+        console.error(`[${pendingInvoice.tracking_id}] Failed to publish invoice processed notification:`, err.message);
     }
 }
 
