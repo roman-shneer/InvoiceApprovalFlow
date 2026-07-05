@@ -6,17 +6,17 @@ spec:
   type: state.mongodb
   version: v1
   metadata:
-    # ИСПРАВЛЕНО: Явно передаем хост и порт для инициализации драйвера Dapr
+    
     - name: host
       value: "mongodb-db:27017"
 
-    # СОХРАНЕНО: Безопасное вытягивание кредов из вашего secret store
+    
     - name: connectionString
       secretKeyRef:
         name: mongodb-connection-string
         key: mongodb-connection-string  
     
-    # СОХРАНЕНО СО СКРИНШОТА: Валидные Enterprise-имена коллекций
+    
     - name: databaseName
       value: "approvalflow"
 
@@ -31,5 +31,8 @@ spec:
 
     - name: operationTimeout
       value: "5s"
+
+    - name: keyPrefix
+      value: "none"
   auth:
     secretStore: approval-secret-store
