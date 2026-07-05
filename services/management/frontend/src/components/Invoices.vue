@@ -38,8 +38,8 @@ const props = defineProps({
                 <td @click="openInvoice(invoice)">{{ renderDate(invoice.submitted_at)}}</td>
                 <td @click="openInvoice(invoice)">{{renderCurrency(invoice.currency)}}{{invoice.taxAmount}}</td>
                 <td @click="openInvoice(invoice)">{{renderCurrency(invoice.currency)}}{{invoice.total}}</td>
-                <td @click="openInvoice(invoice)">{{ invoice.expected.route}}</td>
-                <td @click="openInvoice(invoice)" title="invoice.audit_metadata?.reason">{{ invoice.status}}</td>
+                <td @click="openInvoice(invoice)" :title="invoice.expected?.reason">{{ invoice.expected.route}}</td>
+                <td @click="openInvoice(invoice)" :title="invoice.audit_metadata?.reason">{{ invoice.status}}</td>
                 <td v-if="role=='approver'">
                     <button @click="approveInvoice(invoice)">Approve</button>
                     <button @click="rejectInvoice(invoice)">Reject</button>
@@ -101,8 +101,7 @@ export default {
         },
         async getInvoices(){
             const status=this.role=='approver'?'HUMAN_REVIEW':null;
-            const result=await this.api.GetInvoices(status);
-            console.log("GetInvoices",result);
+            const result=await this.api.GetInvoices(status);            
             this.invoices=result;
         },
         applyNotificationToLocalInvoices(payload){

@@ -294,14 +294,15 @@ async function start() {
                         return sendSocketResponse(socket, requestId, { policies });
                     }
                     case 'save-policy': {
+                        console.log("save-policy", user.role)
                         if (user.role !== 'admin') {
                             return sendSocketResponse(socket, requestId, null, 'Unauthorized');
                         }
-                        const result = await policiesManager.savePolicy(data.policy);
+                        const result = await policiesManager.savePolicy(data.policy, data.original_rule_id);
                         if (!result.success) {
                             return sendSocketResponse(socket, requestId, null, result.error || 'Save failed');
                         }
-                        return sendSocketResponse(socket, requestId, { success: result.data });
+                        return sendSocketResponse(socket, requestId, { success: true, policy: result.data });
                     }
                     case 'delete-policy': {
                         if (user.role !== 'admin') {

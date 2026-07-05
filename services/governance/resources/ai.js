@@ -9,9 +9,12 @@ const ollama = new Ollama({ host: 'http://ollama-service:11434' });
  * @returns {Promise<Object>} — { recommendation: "AUTO_APPROVE"|"HUMAN_REVIEW", reason: "..." }
  */
 async function classifyInvoiceWithLocalAI(invoice, rules) {
-
-
-    const formattedRules = rules
+    const category = String(invoice.category || '').toLowerCase();
+    const relevantRules = rules.filter(rule => {
+        const ruleCategory = String(rule.category || '').toLowerCase();
+        return ruleCategory === 'global rules' || ruleCategory.includes(category);
+    });
+    const formattedRules = relevantRules
         .map((r, index) => `${index + 1}. [${r.rule_id}] Category: ${r.category} -> Requirement: ${r.rule_text}`)
         .join('\n');
 
@@ -26,10 +29,14 @@ CRITICAL INSTRUCTIONS:
 - If no rules are violated and the metadata looks normal, recommend "AUTO_APPROVE".
 - If any corporate rule is violated, or if the data feels anomalous, recommend "HUMAN_REVIEW".
 - You MUST respond strictly in valid JSON format. Do not write any conversational intro/outro text.
+- You are a rigid compliance validator, NOT a decision-maker. You have ZERO authority to make assumptions, exceptions, or compromises.
+- If an invoice amount is even $1 higher than a threshold specified in a rule, it is an AUTOMATIC VIOLATION.
+- DO NOT apply "safe assumptions" based on the vendor name (like DataDog) or receipt presence if a numeric limit is breached.
+- If ANY rule is violated, you MUST strictly recommend "HUMAN_REVIEW". "AUTO_APPROVE" is ONLY allowed if there are absolutely zero rule mismatches.
 
 The JSON object MUST follow this exact schema:
 {
-  "recommendation": "AUTO_APPROVE",
+  "recommendation": "AUTO_APPROVE" or "HUMAN_REVIEW",
   "reason": "Clear English explanation mentioning which specific rule ID was evaluated or violated."
 }`;
 

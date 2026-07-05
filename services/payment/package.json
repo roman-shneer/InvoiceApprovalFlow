@@ -1,0 +1,12 @@
+{
+    "name": "payment-service",
+    "version": "1.0.0",
+    "main": "app.js",
+    "license": "MIT",
+    "scripts": {
+        "start": "node app.js"
+    },
+    "dependencies": {
+        "@dapr/dapr": "^3.4.0"
+    }
+}

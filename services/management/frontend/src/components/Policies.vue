@@ -42,6 +42,7 @@ export default {
     data(){
         return {
             policyToEdit:null,
+            originalRuleId:null,
             policies:[]
         };        
     },
@@ -65,9 +66,11 @@ export default {
                     rule_text:'',
                     is_active:false
                 };
+                this.originalRuleId = null;
         },
         editPolicy(policy){
-            this.policyToEdit=policy;
+            this.policyToEdit = JSON.parse(JSON.stringify(policy));
+            this.originalRuleId = policy.rule_id;
         },
         async onSave(){
             if(this.policyToEdit.rule_id.trim()==''){
@@ -82,13 +85,15 @@ export default {
                 alert("Rule  cannot be empty");
                 return;
             }
-            await this.api.SavePolicy(this.policyToEdit);           
+            await this.api.SavePolicy(this.policyToEdit, this.originalRuleId);           
             this.policyToEdit=null;
+            this.originalRuleId=null;
             this.loadPolicies();
 
         },
         onClose(){
             this.policyToEdit=null;
+            this.originalRuleId=null;
         },
 
         async onDelete(){
