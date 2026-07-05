@@ -5,7 +5,7 @@ const { checkHardStops } = require('./engines/checkHardStops');
 const { applyAutonomyOverride } = require('./engines/applyAutonomyOverride');
 const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
 const { logCompliance } = require('./utils/logCompliance');
-const { getPolicies, saveAuditRecord } = require('./resources/db');
+const { getPolicies, saveAuditRecord, saveInvoiceToMongo } = require('./resources/db');
 
 const appPort = "8002";
 const daprHost = "127.0.0.1";
@@ -32,42 +32,55 @@ async function start() {
                 const invoice = eventData && eventData.data ? eventData.data : eventData;
 
                 console.log(`Inovoice incoming`, invoice);
+                // just save to mongo with status PENDING
+                await saveInvoiceToMongo(invoice);
 
-                const correlationId = invoice.correlation_id || "unknown";
-                const trackingId = invoice.tracking_id || "unknown";
-                const total = parseFloat(invoice.total || 0);
+                process.nextTick(async () => {
+                    try {
+                        const correlationId = invoice.correlation_id || "unknown";
+                        const trackingId = invoice.tracking_id || "unknown";
+                        const total = parseFloat(invoice.total || 0);
 
 
-                const hardStop = checkHardStops(invoice, activeRules);
-                if (hardStop.triggered) {
-                    logCompliance("WARN", trackingId, correlationId,
-                        `Hard stop [${hardStop.rule}]: ${hardStop.reason}`);
+                        const hardStop = checkHardStops(invoice, activeRules);
+                        if (hardStop.triggered) {
+                            logCompliance("WARN", trackingId, correlationId,
+                                `Hard stop [${hardStop.rule}]: ${hardStop.reason}`);
 
-                    await saveAuditRecord(trackingId, correlationId, invoice, "HUMAN_REVIEW", hardStop.reason, [hardStop.rule]);
-                    return;
-                }
+                            await saveAuditRecord(trackingId, correlationId, "HUMAN_REVIEW", hardStop.reason, [hardStop.rule]);
+                            return;
+                        }
 
-                let aiResult;
-                try {
-                    aiResult = await classifyInvoiceWithLocalAI(invoice, activeRules);
-                } catch (err) {
-                    logCompliance("ERROR", trackingId, correlationId, `AI failed: ${err.message}`);
-                    aiResult = evaluateInvoiceWithAI(invoice, activeRules);
-                }
-                const finalResult = applyAutonomyOverride(aiResult, invoice);
+                        let aiResult;
+                        try {
+                            aiResult = await classifyInvoiceWithLocalAI(invoice, activeRules);
+                        } catch (err) {
+                            logCompliance("ERROR", trackingId, correlationId, `AI failed: ${err.message}`);
+                            aiResult = evaluateInvoiceWithAI(invoice, activeRules);
+                        }
+                        const finalResult = applyAutonomyOverride(aiResult, invoice);
 
-                logCompliance(
-                    finalResult.recommendation === "AUTO_APPROVE" ? "INFO" : "WARN",
-                    trackingId, correlationId,
-                    `Decision: ${finalResult.recommendation}. ${finalResult.reason}`
-                );
+                        logCompliance(
+                            finalResult.recommendation === "AUTO_APPROVE" ? "INFO" : "WARN",
+                            trackingId, correlationId,
+                            `Decision: ${finalResult.recommendation}. ${finalResult.reason}`
+                        );
 
-                await saveAuditRecord(
-                    trackingId, correlationId, invoice,
-                    finalResult.recommendation,
-                    finalResult.reason,
-                    finalResult.triggered_rules || []
-                );
+                        await saveAuditRecord(
+                            trackingId, correlationId,
+                            finalResult.recommendation,
+                            finalResult.reason,
+                            finalResult.triggered_rules || []
+                        );
+
+                    } catch (error) {
+                        console.error("Dapr State Save Critical Failure:", error.message);
+                        return;
+                    }
+
+                });
+
+
 
             } catch (err) {
                 console.error("!!! ERROR IN INVOICE PROCESSING STREAM !!!", err.message);
