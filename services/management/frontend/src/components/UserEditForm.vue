@@ -90,7 +90,7 @@ export default {
                 this.error="Please write username";
                 return;
             }
-            if(this.myUser.id===0 && this.myUser.password.trim()=="" && this.myUser.password2.trim()==""){
+            if(!this.myUser.key && this.myUser.password.trim()=="" && this.myUser.password2.trim()==""){
                 this.error="You try create user without password";
                 return;
             }

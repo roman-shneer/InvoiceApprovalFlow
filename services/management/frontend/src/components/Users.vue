@@ -82,11 +82,11 @@ export default {
 
         addNewUser(){
             this.user={
-                id:0,
-                username:"",
-                role:"manager",
-                "password":"",
-                "password2":""
+                key:'',
+                username:'',
+                role:'manager',
+                password:'',
+                password2:''
             };            
         }
 
