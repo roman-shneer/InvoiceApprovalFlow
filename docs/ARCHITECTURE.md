@@ -25,7 +25,7 @@ graph TD
     ManagerUI[Management Backoffice Vue 3] -->|Direct API Requests| Management[Management Service Node.js]
     
     subgraph Containerized Microservices
-        Gateway -->|Ingest Stream| Ingestion[Ingestion Service PHP Swoole]
+        Gateway -->|Ingest Stream| Ingestion[Ingestion Service Node.js]
         Gateway -->|Review State| Governance[Governance Service Node.js]
     end
 
@@ -50,9 +50,9 @@ graph TD
 ```
 
 ### Microservice Directory
-1. **Ingestion Service (PHP Swoole):** Exposes a high-performance, non-blocking input boundary using an event-driven event loop. It validates data structures, processes incoming headers for double-submission keys, and publishes raw events instantly to the Redis buffer via Dapr.
+1. **Ingestion Service (Node.js):** Exposes a high-performance, non-blocking input boundary using an asynchronous event loop. It validates data structures, processes incoming headers for double-submission keys, and publishes raw events instantly to the Redis buffer via Dapr Pub/Sub.
 2. **Governance & AI Service (Node.js + Ollama):** Houses the AI orchestration agents, executes local rule verification algorithms, structures and updates the Human-in-the-Loop review queues, and stores persistent lifecycle logs. It interacts with the local Ollama instance for offline LLM evaluation.
-3. **Management Service (Node.js & Vue 3):** Administrative backoffice. The Node.js backend bypasses Dapr abstractions to run complex analytical NoSQL aggregations, pipeline metrics, and policy configurations directly against MongoDB. The Vue 3 frontend renders the manager's operational dashboards
+3. **Management Service (Node.js & Vue 3):** Administrative backoffice. The Node.js backend bypasses Dapr abstractions to run complex analytical NoSQL aggregations, pipeline metrics, and policy configurations directly against MongoDB. The Vue 3 frontend renders the manager's operational dashboards.
 4. **Payment Service:** Controls corporate asset movement. It tracks ledger allocations, communicates with mock banking networks, and operates distributed consensus states.
 
 ---
@@ -67,7 +67,7 @@ sequenceDiagram
     autonumber
     actor Vendor as Submitter / Vendor
     participant GW as API Gateway
-    participant IS as Ingestion Service (Swoole)
+    participant IS as Ingestion Service (Node.js)
     participant R as Redis Buffer (via Dapr)
     participant GS as Governance Service
     participant OL as Ollama (Llama 3)
@@ -84,7 +84,7 @@ sequenceDiagram
     Note over GS: Evaluates Deterministic Rules First
     GS->>OL: POST /api/generate (Analyze Invoice Intent)
     OL-->>GS: Return Local NLP Verdict & Confidence
-    Note over GS: Verifies Amount < Hard Ceilings ($1,000)
+    Note over GS: Verifies Amount < Hard Ceilings (\$1,000)
     
     GS->>PS: Dapr Pub/Sub: payment.requested (Saga Step 1)
     
@@ -101,16 +101,16 @@ sequenceDiagram
     autonumber
     actor Submitter as Expense Submitter
     actor Approver as Financial Approver
-    participant IS as Ingestion Service
+    participant IS as Ingestion Service (Node.js)
     participant GS as Governance Service
     participant MG as Management Service
     participant PS as Payment Service
 
-    Submitter->>IS: POST /api/v1/expenses (Amount: $1,500)
+    Submitter->>IS: POST /api/v1/expenses (Amount: \$1,500)
     IS-->>Submitter: 202 Accepted (Tracking ID: INV-1003)
     IS->>GS: Dapr Pub/Sub: invoice.received
     
-    Note over GS: Hard Code Guardrail Triggered:<br/>$1,500 exceeds $1,000 threshold limit.<br/>Forcing State: ESCALATED
+    Note over GS: Hard Code Guardrail Triggered:<br/>\$1,500 exceeds \$1,000 threshold limit.<br/>Forcing State: ESCALATED
     Note over GS: Persists state safely to Redis via Dapr<br/>Durable workflow paused
     
     Approver->>MG: Open Backoffice Dashboard (Vue 3)
@@ -154,23 +154,4 @@ graph TD
 ## 5. Defensive Coding & Idempotency Safeguards
 
 ### Inbound De-duplication (Journey INV-1007)
-* Client entities attach an explicit hash header string: `X-Idempotency-Key`.
-* This fingerprint key combines specific data primitives: `Vendor ID`, `Invoice reference sequence number`, and `Exact Transaction Cost`.
-* `Ingestion Service` performs an immediate check against the Dapr State Store with a configured 24-hour Time-to-Live (TTL) cache window.
-* If a duplicate collision occurs, processing terminates instantly, returning the historical tracking record payload without initiating downline services.
-
-### Hard Architectural Security Boundary
-The code ensures safety checks are evaluated completely separate from LLM execution logic, removing any dependency on the model's textual responses:
-
-```js
-// Section 5: Hard Architectural Security Boundary (Node.js Implementation)
-// Pure JavaScript deterministic guardrail enforced inside governance-service
-
-let finalStatus = aiResult.recommendation;
-
-// M12: Rigid programmatic verification protecting infrastructure execution boundaries
-if (amount > 250.0 && finalStatus === "AUTO_APPROVE") {
-    finalStatus = "HUMAN_REVIEW";
-    aiResult.reason = `Deterministic router override: Amount $${amount} exceeds max agent autonomy threshold ($250).`;
-}
-```
+* Client entities attach an explicit hash header string: `X-Idempotency-Key` or allow the Ingestion Service to compute the MD5 identifier over business fields (`md5(vendor + invoiceNumber + total)`). This verifies data uniqueness instantly against Redis within 2ms before publishing events downstream.
