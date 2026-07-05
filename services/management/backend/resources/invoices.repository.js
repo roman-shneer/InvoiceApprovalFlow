@@ -62,7 +62,31 @@ class InvoicesRepository {
             return false;
         }
         console.log("updateInvoiceStatus", key);
-        let rawInvoice = await this.daprClient.state.get(STATE_STORE_NAME, key);
+        let actualKey = key;
+        let rawInvoice = await this.daprClient.state.get(STATE_STORE_NAME, actualKey);
+        if (!rawInvoice && typeof key === 'string') {
+            const normalizedKey = key.includes('||') ? key.split('||').pop() : key;
+            if (normalizedKey !== actualKey) {
+                actualKey = normalizedKey;
+                rawInvoice = await this.daprClient.state.get(STATE_STORE_NAME, actualKey);
+            }
+        }
+        if (!rawInvoice && typeof key === 'string') {
+            console.log("updateInvoiceStatus: direct get failed, trying tracking_id fallback", key);
+            const response = await this.daprClient.state.query(STATE_STORE_NAME, {
+                filter: {
+                    EQ: {
+                        tracking_id: key
+                    }
+                },
+                page: { limit: 1 }
+            });
+            if (response?.results?.length > 0) {
+                actualKey = response.results[0].key;
+                rawInvoice = response.results[0].data || response.results[0].value;
+            }
+        }
+
         if (!rawInvoice) {
             return false;
         }
@@ -70,12 +94,13 @@ class InvoicesRepository {
         let invoice = typeof rawInvoice === 'string' ? JSON.parse(rawInvoice) : rawInvoice;
         invoice.status = status;
         console.log("updateInvoiceStatus.invoice", invoice);
-        return await this.daprClient.state.save(STATE_STORE_NAME, [
+        await this.daprClient.state.save(STATE_STORE_NAME, [
             {
-                key: key,
+                key: actualKey,
                 value: invoice
             }
         ]);
+        return invoice;
 
     }
 

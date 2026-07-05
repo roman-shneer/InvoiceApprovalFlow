@@ -3,24 +3,28 @@ class InvoiceManager {
         this.resource = resource;
     }
 
-    async sendInvoices(jsonString) {
+    async sendInvoices(payload) {
 
         try {
-            const data = JSON.parse(jsonString);
+            const data = typeof payload === 'string' ? JSON.parse(payload) : payload;
             const invoices = [];
-            if (typeof data.id != "undefined") {
-                invoices.push(data);
+            if (!data) {
+                throw new Error('No invoice data provided');
             }
-            else if (typeof data.fixtures != "undefined") {
-                data.fixtures.map((d) => invoices.push(d));
+            if (typeof data.id !== 'undefined') {
+                invoices.push(data);
+            } else if (typeof data.fixtures !== 'undefined') {
+                data.fixtures.forEach((d) => invoices.push(d));
+            } else if (Array.isArray(data)) {
+                data.forEach((d) => invoices.push(d));
             } else {
-                data.map((d) => invoices.push(d));
+                throw new Error('Unsupported invoice payload format');
             }
             const results = await this.resource.sendInvoices(invoices);
-            return { success: true, message: "ok", results: results };
+            return { success: true, message: 'ok', results: results };
         } catch (error) {
-            console.error("JSON parsing error:", error.message);
-            return { success: false, message: `JSON parsing error:${error.message}` };
+            console.error('JSON parsing error:', error.message);
+            return { success: false, message: `JSON parsing error: ${error.message}` };
         }
 
     }
@@ -30,7 +34,6 @@ class InvoiceManager {
     }
 
     async updateInvoiceStatus(key, status) {
-
         return await this.resource.updateInvoiceStatus(key, status);
     }
 

@@ -47,10 +47,16 @@ export default {
     },
     methods:{
         renderDate(d){
-            d=toRaw(d);        
-            const isoDateStr= d.$date.toLocaleString();
-            const humanDate = new Date(isoDateStr).toLocaleString();
-            return humanDate;
+            d = toRaw(d);
+            if (!d) {
+                return '';
+            }
+            const rawDate = d.$date ?? d;
+            const date = new Date(rawDate);
+            if (Number.isNaN(date.valueOf())) {
+                return '';
+            }
+            return date.toLocaleString();
         },
         addNew(){
                 this.policyToEdit={               

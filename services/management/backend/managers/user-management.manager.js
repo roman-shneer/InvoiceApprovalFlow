@@ -12,8 +12,7 @@ class UserManagementManager {
         }
 
         const { key, username, password, role } = userData;
-        if (Number(key) === "") {
-
+        if (!key) {
             const passwordHash = await this.cryptoEngine.hashPassword(password);
             const newUser = await this.userResource.create(username, role, passwordHash);
             return { success: true, data: newUser };

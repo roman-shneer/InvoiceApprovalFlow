@@ -9,6 +9,11 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:80', // Адрес вашего Node.js сервера
         changeOrigin: true
+      },
+      '/ws': {
+        target: 'ws://localhost:80',
+        ws: true,
+        changeOrigin: true
       }
     }
   }

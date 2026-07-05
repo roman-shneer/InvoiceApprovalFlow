@@ -1,5 +1,6 @@
 
 const STATE_STORE_NAME = "mongo-users";
+const crypto = require('crypto');
 
 class UserRepository {
     constructor(daprClient) {
@@ -14,7 +15,7 @@ class UserRepository {
 
 
     async create(username, role, passwordHash) {
-        const key = `doc_${randomUUID()}`;
+        const key = `doc_${crypto.randomUUID()}`;
         const result = await this.daprClient.state.save(STATE_STORE_NAME, [
             {
                 key: key,

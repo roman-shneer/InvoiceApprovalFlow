@@ -32,9 +32,10 @@ const checkToken = async () => {
     if (data && data.Success) {
       user.value = data.user;
       isAuthenticated.value = true;
+      await api.connectWebSocket();
     } 
   } catch (error) {
-    console.error("Error checking error:", error);
+    console.error("Error checking auth:", error);
   }
 };
 
@@ -44,6 +45,7 @@ const sendLoginForm = async () => {
     if (result && result.success) {  
       user.value = result.user;
       isAuthenticated.value = true;
+      await api.connectWebSocket();
     } else {
       alert("Invalid username or password");
     }

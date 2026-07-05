@@ -21,8 +21,11 @@ class PoliciesManager {
 
             return { success: false, error: 'Invalid data format' };
         }
-        const isSaved = await this.resource.insert(policy);
-        return { success: true, data: isSaved };
+        if (!policy.created_at) {
+            policy.created_at = new Date().toISOString();
+        }
+        const savedPolicy = await this.resource.save(policy);
+        return { success: true, data: savedPolicy };
     }
 
 

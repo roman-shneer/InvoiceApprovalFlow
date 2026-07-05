@@ -20,6 +20,7 @@ const props = defineProps({
         <tbody>
             <tr>
                 <td>tracking_id</td>
+                <td>invoiceNumber</td>
                 <td>correlation_id</td>
                 <td>submitter</td>
                 <td>submitted</td>
@@ -29,8 +30,9 @@ const props = defineProps({
                 <td>status</td>   
                 <td v-if="role=='approver'">&nbsp;</td>             
             </tr>
-            <tr v-for="invoice of invoices">
+            <tr v-for="invoice of invoices" :key="invoice.key || invoice.tracking_id || invoice.id">
                 <td @click="openInvoice(invoice)">{{ invoice.tracking_id }}</td>
+                <td @click="openInvoice(invoice)">{{ invoice.invoiceNumber }}</td>
                 <td @click="openInvoice(invoice)">{{invoice.correlation_id}}</td>
                 <td @click="openInvoice(invoice)">{{ invoice.submitter}}</td>
                 <td @click="openInvoice(invoice)">{{ renderDate(invoice.submitted_at)}}</td>
@@ -59,12 +61,30 @@ export default {
     },
     methods:{
         async approveInvoice(invoice){
-            await this.api.ApproveInvoice(invoice);
-            this.getInvoices();
+            try {
+                const key = invoice.key || invoice.tracking_id || invoice.id;
+                if (!key) {
+                    throw new Error('Invoice key is missing');
+                }
+                await this.api.ApproveInvoice({ key });
+                this.getInvoices();
+            } catch (err) {
+                console.error('Approve failed', err);
+                alert('Approve failed: ' + err.message);
+            }
         },
         async rejectInvoice(invoice){
-            await this.api.RejectInvoice(invoice);
-            this.getInvoices();
+            try {
+                const key = invoice.key || invoice.tracking_id || invoice.id;
+                if (!key) {
+                    throw new Error('Invoice key is missing');
+                }
+                await this.api.RejectInvoice({ key });
+                this.getInvoices();
+            } catch (err) {
+                console.error('Reject failed', err);
+                alert('Reject failed: ' + err.message);
+            }
         },
         openInvoice(invoice){                       
             this.showInvoice=JSON.stringify(invoice, null, 2);
@@ -84,6 +104,9 @@ export default {
             console.log("GetInvoices",result);
             this.invoices=result;
         },
+        onInvoiceEvent(){
+            this.getInvoices();
+        },
         renderDate(d){            
             const isoDateStr= d.toLocaleString();            
             return new Date(isoDateStr).toLocaleString();            
@@ -93,6 +116,19 @@ export default {
     },
     mounted(){
         this.getInvoices();
+        if (this.api && typeof this.api.subscribe === 'function') {
+            this.api.subscribe('invoice-created', this.onInvoiceEvent);
+            this.api.subscribe('invoice-updated', this.onInvoiceEvent);
+            if (typeof this.api.connectWebSocket === 'function') {
+                this.api.connectWebSocket();
+            }
+        }
+    },
+    beforeUnmount(){
+        if (this.api && typeof this.api.unsubscribe === 'function') {
+            this.api.unsubscribe('invoice-created', this.onInvoiceEvent);
+            this.api.unsubscribe('invoice-updated', this.onInvoiceEvent);
+        }
     }
 }
 </script>
