@@ -46,7 +46,7 @@ describe('Ingestion Service API Tests', () => {
         expect(mockPubSubPublish).not.toHaveBeenCalled();
     });
 
-    test('POST /api/v1/expenses - Should accept unique invoice and publish event', async () => {
+    test('POST /api/v1/expenses - Should accept unique invoice and dispatch outbox event', async () => {
         const validInvoice = {
             id: "INV-1016",
             vendor: "City Cabs",
@@ -81,7 +81,16 @@ describe('Ingestion Service API Tests', () => {
             })
         ]));
 
-        expect(mockPubSubPublish).not.toHaveBeenCalled();
+        expect(mockPubSubPublish).toHaveBeenCalledWith(
+            'approval-pubsub',
+            'invoice.submitted',
+            expect.objectContaining({
+                tracking_id: 'INV-1016',
+                vendor: 'City Cabs',
+                invoiceNumber: 'CC-4410',
+                total: 48
+            })
+        );
     });
 
     test('POST /api/v1/expenses - Should short-circuit and return 200 on duplicate invoice', async () => {
