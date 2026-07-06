@@ -43,6 +43,33 @@ function logMessage(level, correlationId, message) {
     });
 }
 
+async function dispatchOutboxEvent(outboxEvent, correlationId) {
+    try {
+        await daprClient.pubsub.publish(
+            outboxEvent.pubsub_name,
+            outboxEvent.topic,
+            outboxEvent.payload
+        );
+
+        await daprClient.state.save(STATE_STORE_NAME, [
+            {
+                key: outboxEvent.event_id,
+                value: {
+                    ...outboxEvent,
+                    processed: true,
+                    processed_at: new Date().toISOString()
+                }
+            }
+        ]);
+
+        logMessage('INFO', correlationId, `Dispatched outbox event ${outboxEvent.event_id} to ${outboxEvent.topic}`);
+        return true;
+    } catch (error) {
+        logMessage('ERROR', correlationId, `Outbox dispatch failed for ${outboxEvent.event_id}: ${error.message}`);
+        return false;
+    }
+}
+
 
 logMessage('INFO', '0', 'Ingestion service bootstrap complete. Listening for incoming traffic.');
 
@@ -106,6 +133,14 @@ app.post('/api/v1/expenses', async (req, res) => {
         };
 
         const outboxEventId = `outbox_${crypto.randomUUID()}`;
+        const outboxEvent = {
+            event_id: outboxEventId,
+            pubsub_name: PUB_SUB_NAME,
+            topic: PUB_SUB_TOPIC,
+            payload: eventPayload,
+            processed: false,
+            created_at: new Date().toISOString()
+        };
 
         await daprClient.state.save(STATE_STORE_NAME, [
             {
@@ -119,18 +154,12 @@ app.post('/api/v1/expenses', async (req, res) => {
             },
             {
                 key: outboxEventId,
-                value: {
-                    event_id: outboxEventId,
-                    pubsub_name: PUB_SUB_NAME,
-                    topic: PUB_SUB_TOPIC,
-                    payload: eventPayload,
-                    processed: false,
-                    created_at: new Date().toISOString()
-                }
+                value: outboxEvent
             }
         ]);
 
         logMessage('INFO', correlationId, `Transactionally saved invoice and outbox event ${outboxEventId}`);
+        await dispatchOutboxEvent(outboxEvent, correlationId);
 
         return res.status(202).json({
             tracking_id: trackingId,
