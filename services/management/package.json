@@ -4,18 +4,18 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest --runInBand"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@dapr/dapr": "^3.4.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "@dapr/dapr": "^3.4.0",
     "express-fileupload": "^1.5.2",
     "express-session": "^1.19.0",
     "jsonwebtoken": "^9.0.3",
@@ -24,5 +24,8 @@
     "multer": "^2.2.0",
     "pg": "^8.21.0",
     "ws": "^8.14.1"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2"
   }
 }
