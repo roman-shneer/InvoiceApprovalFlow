@@ -18,7 +18,7 @@ function checkHardStops(invoice, rules) {
     const fxThreshold = getThreshold('GLOBAL-FX', 1000);
     const receiptThreshold = getThreshold('GLOBAL-RECEIPT', 25);
 
-    if (!invoice.vendorKnown || ["unknown", "brand-new vendor"].includes(vendor) || hasRule('GLOBAL-VENDOR')) {
+    if (hasRule('GLOBAL-VENDOR') && (!invoice.vendorKnown || ["unknown", "brand-new vendor"].includes(vendor))) {
         return { triggered: true, rule: "GLOBAL-VENDOR", reason: "Unknown/unverified vendor always requires human review." };
     }
 
