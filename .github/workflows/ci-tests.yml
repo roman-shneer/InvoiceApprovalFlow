@@ -24,6 +24,9 @@ jobs:
           services/governance/package-lock.json
           services/payment/package-lock.json
 
+    - name: Install Monorepo Root Dependencies
+      run: npm install
+
     - name: Install Ingestion Service Dependencies
       run: npm ci --prefix services/ingestion
 
@@ -32,9 +35,6 @@ jobs:
 
     - name: Install Payment Service Dependencies
       run: npm ci --prefix services/payment
-    
-    - name: Install Management Service Dependencies
-      run: npm ci --prefix services/management
 
     - name: Run Ingestion Service Suite
       run: npm test --prefix services/ingestion
@@ -45,5 +45,24 @@ jobs:
     - name: Run Payment Service Suite
       run: npm test --prefix services/payment
 
-    - name: Run Management Service Suite
-      run: npm test --prefix services/management
+    - name: Run Distributed Live E2E Harness
+      run: npm run test:e2e
+
+  deploy-stage:
+    needs: run-tests
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout repository code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: actions/setup-buildx-action@v3
+
+    - name: Simulate Production Container Delivery
+      run: |
+        echo "🚀 Starting CD Deployment Stage Pipeline Automation..."
+        echo "Compiling and validating Dockerfile layers blueprints..."
+        docker build -f services/ingestion/Dockerfile --target=production -t approvalflow/ingestion:latest . --dry-run
+        echo "🎉 CD simulation success! Ready for container registry propagation."
