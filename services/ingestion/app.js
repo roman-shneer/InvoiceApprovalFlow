@@ -70,7 +70,7 @@ app.post('/api/v1/expenses', async (req, res) => {
 
         if (existingState && Object.keys(existingState).length > 0) {
             const trackingId = existingState.tracking_id || body.id;
-            logMessage('INFO', correlationId, `Duplicate detected via key: ${idempotencyKey}. Short-circuiting request.`);
+            logMessage('INFO', correlationId, `Duplicate detected: ${idempotencyKey}.`);
 
             return res.status(200).json({
                 tracking_id: trackingId,
@@ -80,21 +80,6 @@ app.post('/api/v1/expenses', async (req, res) => {
         }
 
         const trackingId = body.id;
-
-        await daprClient.state.save(STATE_STORE_NAME, [
-            {
-                key: idempotencyKey,
-                value: {
-                    tracking_id: trackingId,
-                    correlation_id: correlationId,
-                    status: 'PROCESSING'
-                },
-                metadata: {
-                    ttlInSeconds: '86400'
-                }
-            }
-        ]);
-
         const category = body.category || 'General';
 
         const eventPayload = {
@@ -120,8 +105,32 @@ app.post('/api/v1/expenses', async (req, res) => {
             note: body.note ?? null
         };
 
-        await daprClient.pubsub.publish(PUB_SUB_NAME, PUB_SUB_TOPIC, eventPayload);
-        logMessage('INFO', correlationId, `Successfully published '${PUB_SUB_TOPIC}' event for tracking_id: ${trackingId}`);
+        const outboxEventId = `outbox_${crypto.randomUUID()}`;
+
+        await daprClient.state.save(STATE_STORE_NAME, [
+            {
+                key: idempotencyKey,
+                value: {
+                    tracking_id: trackingId,
+                    correlation_id: correlationId,
+                    status: 'PROCESSING'
+                },
+                metadata: { ttlInSeconds: '86400' }
+            },
+            {
+                key: outboxEventId,
+                value: {
+                    event_id: outboxEventId,
+                    pubsub_name: PUB_SUB_NAME,
+                    topic: PUB_SUB_TOPIC,
+                    payload: eventPayload,
+                    processed: false,
+                    created_at: new Date().toISOString()
+                }
+            }
+        ]);
+
+        logMessage('INFO', correlationId, `Transactionally saved invoice and outbox event ${outboxEventId}`);
 
         return res.status(202).json({
             tracking_id: trackingId,
@@ -131,10 +140,8 @@ app.post('/api/v1/expenses', async (req, res) => {
 
     } catch (error) {
         logMessage('ERROR', correlationId, `Critical failure in ingestion processing: ${error.message}`);
-
         const statusCode = error.status || error.statusCode || 500;
         const errorMessage = statusCode === 500 ? 'Internal Server Error' : error.message;
-
         return res.status(statusCode).json({ error: errorMessage });
     }
 });

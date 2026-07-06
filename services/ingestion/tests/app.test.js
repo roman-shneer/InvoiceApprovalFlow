@@ -71,7 +71,7 @@ describe('Ingestion Service API Tests', () => {
 
         expect(mockStateGet).toHaveBeenCalledWith('approval-state', expect.any(String));
 
-        expect(mockStateSave).toHaveBeenCalledWith('approval-state', [
+        expect(mockStateSave).toHaveBeenCalledWith('approval-state', expect.arrayContaining([
             expect.objectContaining({
                 key: expect.any(String),
                 value: expect.objectContaining({
@@ -79,20 +79,9 @@ describe('Ingestion Service API Tests', () => {
                     status: "PROCESSING"
                 })
             })
-        ]);
+        ]));
 
-        expect(mockPubSubPublish).toHaveBeenCalledWith(
-            'approval-pubsub',
-            'invoice.submitted',
-            expect.objectContaining({
-                tracking_id: "INV-1016",
-                vendor: "City Cabs",
-                total: 48.0,
-                invoiceNumber: "CC-4410",
-                idempotency_key: expect.any(String),
-                correlation_id: expect.any(String)
-            })
-        );
+        expect(mockPubSubPublish).not.toHaveBeenCalled();
     });
 
     test('POST /api/v1/expenses - Should short-circuit and return 200 on duplicate invoice', async () => {
