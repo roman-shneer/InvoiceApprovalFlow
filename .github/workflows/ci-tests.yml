@@ -45,8 +45,19 @@ jobs:
     - name: Run Payment Service Suite
       run: npm test --prefix services/payment
 
+    - name: Start Live Infrastructure Mesh Grid via Docker Compose
+      run: |
+        docker compose up -d
+        echo "Awaiting system boundaries and Envoy Gateway proxy sockets initialization..."
+        sleep 25
+        docker compose ps
+
     - name: Run Distributed Live E2E Harness
       run: npm run test:e2e
+
+    - name: Tear Down Infrastructure Environment
+      if: always()
+      run: docker compose down --volumes --remove-orphans
 
   deploy-stage:
     needs: run-tests
