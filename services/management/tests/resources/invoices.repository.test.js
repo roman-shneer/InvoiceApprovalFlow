@@ -23,16 +23,46 @@ describe('InvoicesRepository', () => {
         }));
     });
 
-    test('getInvoices returns state rows with keys and supports HUMAN_REVIEW sorting', async () => {
-        const query = jest.fn().mockResolvedValue({ results: [{ key: 'invoice-1', data: { total: 10 } }] });
+    test('getInvoices returns state rows with keys and supports HUMAN_REVIEW filtering/sorting', async () => {
+        const query = jest.fn().mockResolvedValue({
+            results: [
+                { key: 'invoice-1', data: { status: 'HUMAN_REVIEW', total: 10, submitted_at: '2026-07-06T10:00:00.000Z' } },
+                { key: 'invoice-2', data: { status: 'HUMAN_REVIEW', total: 20, submitted_at: '2026-07-06T09:00:00.000Z' } },
+                { key: 'invoice-3', data: { status: 'AUTO_APPROVE', total: 30, submitted_at: '2026-07-06T08:00:00.000Z' } }
+            ]
+        });
         const repository = new InvoicesRepository({ state: { query, get: jest.fn(), save: jest.fn() }, pubsub: { publish: jest.fn() } });
 
-        await expect(repository.getInvoices('HUMAN_REVIEW')).resolves.toEqual([{ key: 'invoice-1', total: 10 }]);
+        await expect(repository.getInvoices('HUMAN_REVIEW')).resolves.toEqual([
+            { key: 'invoice-2', status: 'HUMAN_REVIEW', total: 20, submitted_at: '2026-07-06T09:00:00.000Z' },
+            { key: 'invoice-1', status: 'HUMAN_REVIEW', total: 10, submitted_at: '2026-07-06T10:00:00.000Z' }
+        ]);
         expect(query).toHaveBeenCalledWith('mongo-invoices', {
-            filter: { EQ: { status: 'HUMAN_REVIEW' } },
-            sort: [{ key: 'submitted_at', order: 'ASC' }],
+            filter: {},
             page: { limit: 100 }
         });
+    });
+
+    test('getInvoices also maps rows returned with value payload shape', async () => {
+        const query = jest.fn().mockResolvedValue({
+            results: [{ key: 'invoice-2', value: { tracking_id: 'INV-2', total: 20 } }]
+        });
+        const repository = new InvoicesRepository({ state: { query, get: jest.fn(), save: jest.fn() }, pubsub: { publish: jest.fn() } });
+
+        await expect(repository.getInvoices()).resolves.toEqual([
+            { key: 'invoice-2', tracking_id: 'INV-2', total: 20 }
+        ]);
+    });
+
+    test('getInvoices maps rows returned with _id and value shape from mongo', async () => {
+        const query = jest.fn().mockResolvedValue({
+            results: [{ _id: 'INV-1001XXXX', value: { tracking_id: 'INV-1001XXXX', total: 42, status: 'HUMAN_REVIEW' } }]
+        });
+        const repository = new InvoicesRepository({ state: { query, get: jest.fn(), save: jest.fn() }, pubsub: { publish: jest.fn() } });
+
+        await expect(repository.getInvoices()).resolves.toEqual([
+            { key: 'INV-1001XXXX', tracking_id: 'INV-1001XXXX', total: 42, status: 'HUMAN_REVIEW' }
+        ]);
     });
 
     test('updateInvoiceStatus saves approved invoices and publishes payment requests', async () => {

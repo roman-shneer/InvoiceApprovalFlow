@@ -1,16 +1,3 @@
-<script setup>
-const props = defineProps({
-  api: {
-    type: Object,
-    required: true
-  },
-  role: {
-    type: String,
-    required: true
-  }
-});
-
-</script>
 <template>
     <div v-if="showInvoice!=null" class="show-invoice">
         <button class="show-invoice-close" @click="showInvoice=null">x</button>
@@ -39,7 +26,7 @@ const props = defineProps({
                 <td @click="openInvoice(invoice)">{{ renderDate(invoice.submitted_at)}}</td>
                 <td @click="openInvoice(invoice)">{{renderCurrency(invoice.currency)}}{{invoice.taxAmount}}</td>
                 <td @click="openInvoice(invoice)">{{renderCurrency(invoice.currency)}}{{invoice.total}}</td>
-                <td @click="openInvoice(invoice)" :title="invoice.expected?.reason">{{ invoice.expected.route}}</td>
+                <td @click="openInvoice(invoice)" :title="getExpectedReason(invoice)">{{ getExpectedRoute(invoice) }}</td>
                 <td @click="openInvoice(invoice)" :title="invoice.audit_metadata?.reason">{{ invoice.status}}</td>
                 <td @click="openInvoice(invoice)" v-if="role=='submitter'" >{{ invoice?.payment?.status}}</td>
                 <td v-if="role=='approver'">
@@ -54,6 +41,16 @@ const props = defineProps({
 
 export default {
     name:'Invoices',
+    props: {
+        api: {
+            type: Object,
+            required: true
+        },
+        role: {
+            type: String,
+            required: true
+        }
+    },
     data(){
         return {
             invoice:"",
@@ -102,9 +99,9 @@ export default {
             }
         },
         async getInvoices(){
-            const status=this.role=='approver'?'HUMAN_REVIEW':null;
-            const result=await this.api.GetInvoices(status);            
-            this.invoices=result;
+            const status = this.role == 'approver' ? 'HUMAN_REVIEW' : null;
+            const result = await this.api.GetInvoices(status);
+            this.invoices = Array.isArray(result) ? result : [];
         },
         applyNotificationToLocalInvoices(payload){
             if (!payload || !payload.tracking_id) {
@@ -142,9 +139,27 @@ export default {
                 this.getInvoices();
             }
         },
-        renderDate(d){            
-            const isoDateStr= d.toLocaleString();            
-            return new Date(isoDateStr).toLocaleString();            
+        renderDate(d){
+            if (!d) {
+                return '-';
+            }
+            const parsed = new Date(d);
+            if (Number.isNaN(parsed.valueOf())) {
+                return String(d);
+            }
+            return parsed.toLocaleString();
+        },
+        getExpectedRoute(invoice) {
+            if (!invoice || !invoice.expected || typeof invoice.expected !== 'object') {
+                return '-';
+            }
+            return invoice.expected.route || '-';
+        },
+        getExpectedReason(invoice) {
+            if (!invoice || !invoice.expected || typeof invoice.expected !== 'object') {
+                return '';
+            }
+            return invoice.expected.reason || '';
         },
 
 
