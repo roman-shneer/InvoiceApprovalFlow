@@ -43,7 +43,6 @@ async function start() {
                 const trackingId = invoice.tracking_id || invoice.id || "unknown";
 
                 console.log(`[${trackingId}] Incoming invoice received via Pub/Sub`);
-
                 // Phase 1: persist invoice in Mongo with PENDING status
                 invoice.status = 'PENDING';
                 await saveInvoiceToMongo(invoice);
@@ -87,9 +86,7 @@ async function start() {
                         }
 
                         // 3. Apply autonomy override / threshold logic
-                        console.log("aiResult", aiResult);
                         const finalResult = applyAutonomyOverride(aiResult, invoice);
-                        console.log("finalResult", finalResult);
                         const finalStatus = finalResult.recommendation === 'AUTO_APPROVE' ? 'AUTO_APPROVE' : 'HUMAN_REVIEW';
                         const aiApproved = finalResult.recommendation === 'AUTO_APPROVE';
 
@@ -111,6 +108,23 @@ async function start() {
                         await saveInvoiceToMongo(invoice);
                         // Publish final verdict to notification channel
                         await publishInvoiceProcessedNotification(invoice, finalStatus, aiApproved);
+
+                        // If the system auto-approved, request payment (idempotent guard)
+                        if (aiApproved) {
+                            try {
+                                if (!invoice.payment_requested) {
+                                    invoice.payment_requested = true;
+                                    // persist the payment request flag
+                                    //TODO? await saveInvoiceToMongo(invoice);
+                                    await daprClient.pubsub.publish(PUB_SUB_NAME, 'payment.requested', invoice);
+                                    console.log(`[${trackingId}] Published payment.requested for ${trackingId}`);
+                                } else {
+                                    console.log(`[${trackingId}] payment.requested already set; skipping publish`);
+                                }
+                            } catch (err) {
+                                console.error(`[${trackingId}] Failed to publish payment.requested:`, err.message);
+                            }
+                        }
 
                     } catch (error) {
                         console.error(`[${trackingId}] Critical failure inside background worker:`, error.message);
