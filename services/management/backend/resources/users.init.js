@@ -16,7 +16,6 @@ async function UsersInit(daprClient, STATE_STORE_NAME) {
                 select: [],
                 page: { limit: 1 }
             });
-            console.log(`results found ${queryResponse.results.length.length}`);
 
             if (queryResponse.results && queryResponse.results.length > 0) {
                 console.log(`🍏 [BOOTSTRAP] Users collection is already initialized. Found existing accounts.`);

@@ -1,4 +1,6 @@
 const STATE_STORE_NAME = "mongo-invoices";
+const PUB_SUB_NAME = "approval-pubsub";
+
 class InvoicesRepository {
     constructor(daprClient) {
         this.daprClient = daprClient;
@@ -12,7 +14,7 @@ class InvoicesRepository {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    // 'Authorization': 'Bearer YOUR_TOKEN' // если нужна авторизация
+                    // 'Authorization': 'Bearer YOUR_TOKEN'
                 },
                 body: JSON.stringify(invoice)
             });
@@ -61,7 +63,6 @@ class InvoicesRepository {
         if (status !== 'APPROVED' && status !== "REJECTED") {
             return false;
         }
-        console.log("updateInvoiceStatus", key);
         let actualKey = key;
         let rawInvoice = await this.daprClient.state.get(STATE_STORE_NAME, actualKey);
         if (!rawInvoice && typeof key === 'string') {
@@ -72,7 +73,6 @@ class InvoicesRepository {
             }
         }
         if (!rawInvoice && typeof key === 'string') {
-            console.log("updateInvoiceStatus: direct get failed, trying tracking_id fallback", key);
             const response = await this.daprClient.state.query(STATE_STORE_NAME, {
                 filter: {
                     EQ: {
@@ -90,16 +90,18 @@ class InvoicesRepository {
         if (!rawInvoice) {
             return false;
         }
-        console.log("updateInvoiceStatus.rawInvoice", rawInvoice);
         let invoice = typeof rawInvoice === 'string' ? JSON.parse(rawInvoice) : rawInvoice;
         invoice.status = status;
-        console.log("updateInvoiceStatus.invoice", invoice);
         await this.daprClient.state.save(STATE_STORE_NAME, [
             {
                 key: actualKey,
                 value: invoice
             }
         ]);
+        //inform payment
+        if (status == 'APPROVED') {
+            await this.daprClient.pubsub.publish(PUB_SUB_NAME, 'payment.requested', invoice);
+        }
         return invoice;
 
     }

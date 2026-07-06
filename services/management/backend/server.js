@@ -120,6 +120,16 @@ async function start() {
                 pubsubname: 'approval-pubsub',
                 topic: 'invoice.processed',
                 route: '/events/invoice-processed'
+            },
+            {
+                pubsubname: 'approval-pubsub',
+                topic: 'payment.confirmed',
+                route: '/events/payment-confirmed'
+            },
+            {
+                pubsubname: 'approval-pubsub',
+                topic: 'payment.failed',
+                route: '/events/payment-failed'
             }
         ]);
     });
@@ -139,11 +149,6 @@ async function start() {
         }
 
         let invoice = payload?.data?.data || payload?.data || payload;
-
-        console.log('invoice-processed.content-type', req.headers['content-type']);
-        console.log('invoice-processed.rawBody', rawBody);
-        console.log('invoice-processed.payload', payload);
-
         let trackingId = invoice?.tracking_id || invoice?.trackingId || invoice?.id || 'unknown';
 
         if (!invoice || trackingId === 'unknown') {
@@ -168,6 +173,37 @@ async function start() {
 
         res.status(200).send();
     });
+
+    async function handlePaymentEvent(req, res, eventName) {
+        const rawBody = req.body;
+        let payload;
+        if (typeof rawBody === 'string' && rawBody.length > 0) {
+            try {
+                payload = JSON.parse(rawBody);
+            } catch (err) {
+                console.warn(`[Notification Channel] failed to parse raw request body as JSON for ${eventName}:`, err.message);
+                payload = undefined;
+            }
+        } else if (typeof rawBody === 'object' && rawBody !== null) {
+            payload = rawBody;
+        }
+
+        const eventData = payload?.data?.data || payload?.data || payload;
+        const trackingId = eventData?.tracking_id || eventData?.trackingId || eventData?.id || 'unknown';
+
+        console.log(`[Notification Channel] Received ${eventName} for ${trackingId}. Refreshing invoice views for WebSocket clients.`);
+
+        try {
+            broadcastToClients({ type: 'invoice-refresh' });
+        } catch (err) {
+            console.error(`[Notification Channel] Failed to notify clients on ${eventName}:`, err.message);
+        }
+
+        res.status(200).send();
+    }
+
+    app.post('/events/payment-confirmed', express.text({ type: '*/*' }), async (req, res) => handlePaymentEvent(req, res, 'payment.confirmed'));
+    app.post('/events/payment-failed', express.text({ type: '*/*' }), async (req, res) => handlePaymentEvent(req, res, 'payment.failed'));
 
     const server = http.createServer(app);
     const wss = new WebSocket.Server({ server, path: '/ws' });
@@ -294,7 +330,6 @@ async function start() {
                         return sendSocketResponse(socket, requestId, { policies });
                     }
                     case 'save-policy': {
-                        console.log("save-policy", user.role)
                         if (user.role !== 'admin') {
                             return sendSocketResponse(socket, requestId, null, 'Unauthorized');
                         }

@@ -26,7 +26,6 @@ class PoliciesRepository {
      * Persists or updates a specific setting key-value pair
      */
     async save(policy) {
-        console.log("savePolicy.policy.rule_id", policy.rule_id);
         await this.daprClient.state.save(STATE_STORE_NAME, [
             {
                 key: policy.rule_id,

@@ -28,6 +28,7 @@ const props = defineProps({
                 <td>total</td>
                 <td>expected</td>
                 <td>status</td>   
+                <td v-if="role=='submitter'">payment</td> 
                 <td v-if="role=='approver'">&nbsp;</td>             
             </tr>
             <tr v-for="invoice of invoices" :key="invoice.key || invoice.tracking_id || invoice.id">
@@ -40,6 +41,7 @@ const props = defineProps({
                 <td @click="openInvoice(invoice)">{{renderCurrency(invoice.currency)}}{{invoice.total}}</td>
                 <td @click="openInvoice(invoice)" :title="invoice.expected?.reason">{{ invoice.expected.route}}</td>
                 <td @click="openInvoice(invoice)" :title="invoice.audit_metadata?.reason">{{ invoice.status}}</td>
+                <td @click="openInvoice(invoice)" v-if="role=='submitter'" >{{ invoice?.payment?.status}}</td>
                 <td v-if="role=='approver'">
                     <button @click="approveInvoice(invoice)">Approve</button>
                     <button @click="rejectInvoice(invoice)">Reject</button>
@@ -108,22 +110,35 @@ export default {
             if (!payload || !payload.tracking_id) {
                 return false;
             }
+
+            // Approvers only show HUMAN_REVIEW invoices, so if the notified invoice has
+            // moved out of HUMAN_REVIEW we must refresh the filtered list.
+            if (this.role === 'approver' && payload.status && payload.status !== 'HUMAN_REVIEW') {
+                return false;
+            }
+
             const updated = this.invoices.map((invoice) => {
                 if (invoice.tracking_id === payload.tracking_id || invoice.id === payload.tracking_id) {
                     return { ...invoice, status: payload.status, audit_metadata: payload.audit_metadata || invoice.audit_metadata };
                 }
                 return invoice;
             });
-            const found = updated.some((invoice, index) => invoice.tracking_id === payload.tracking_id && invoice.status === payload.status);
+            const found = updated.some((invoice) => invoice.tracking_id === payload.tracking_id && invoice.status === payload.status);
             if (found) {
                 this.invoices = updated;
                 return true;
             }
             return false;
         },
-        onInvoiceEvent(payload){
-            console.log('Invoice notification received', payload);
+        onInvoiceEvent(payload){            
             if (!this.applyNotificationToLocalInvoices(payload)) {
+                this.getInvoices();
+            }
+        },
+        onInvoiceRefresh(payload) {            
+            if (payload && Array.isArray(payload.invoices)) {
+                this.invoices = payload.invoices;
+            } else {
                 this.getInvoices();
             }
         },
@@ -140,9 +155,11 @@ export default {
             this.eventHandlers.created = this.onInvoiceEvent.bind(this);
             this.eventHandlers.updated = this.onInvoiceEvent.bind(this);
             this.eventHandlers.processed = this.onInvoiceEvent.bind(this);
+            this.eventHandlers.refreshed = this.onInvoiceRefresh.bind(this);
             this.api.subscribe('invoice-created', this.eventHandlers.created);
             this.api.subscribe('invoice-updated', this.eventHandlers.updated);
             this.api.subscribe('invoice-processed', this.eventHandlers.processed);
+            this.api.subscribe('invoice-refresh', this.eventHandlers.refreshed);
             if (typeof this.api.connectWebSocket === 'function') {
                 this.api.connectWebSocket();
             }
@@ -156,6 +173,7 @@ export default {
             if (this.eventHandlers.created) this.api.unsubscribe('invoice-created', this.eventHandlers.created);
             if (this.eventHandlers.updated) this.api.unsubscribe('invoice-updated', this.eventHandlers.updated);
             if (this.eventHandlers.processed) this.api.unsubscribe('invoice-processed', this.eventHandlers.processed);
+            if (this.eventHandlers.refreshed) this.api.unsubscribe('invoice-refresh', this.eventHandlers.refreshed);
         }
     }
 }

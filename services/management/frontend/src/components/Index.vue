@@ -1,7 +1,6 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import Users from "./Users.vue";
-import Families from "./Families.vue";
 import Policies from "./Policies.vue";
 import InvoiceForm from './InvoiceForm.vue';
 import Api from "./../resources/api.js";

@@ -34,7 +34,6 @@ class InvoiceController {
         const currentUserRole = req?.user?.role || null;
         const status = req.query.status;
         if (currentUserRole == 'submitter' || currentUserRole == 'approver') {
-            console.log(status);
             const result = await this.manager.getInvoices(status);
             return res.json(result);
 
