@@ -45,6 +45,12 @@ jobs:
     - name: Run Payment Service Suite
       run: npm test --prefix services/payment
 
+    - name: Create Secrets Mock Placements Environment File
+      run: |
+        echo "REDIS_PASSWORD=mock_redis_secure_pass" > .env
+        echo "MONGO_DB=approvalflow" >> .env
+        echo "🎉 Generated environment secrets manifest variables for cloud docker runtime loop context."
+
     - name: Start Live Infrastructure Mesh Grid via Docker Compose
       run: |
         docker compose up -d
@@ -57,7 +63,9 @@ jobs:
 
     - name: Tear Down Infrastructure Environment
       if: always()
-      run: docker compose down --volumes --remove-orphans
+      run: |
+        touch .env
+        docker compose down --volumes --remove-orphans
 
   deploy-stage:
     needs: run-tests
