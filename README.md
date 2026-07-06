@@ -42,3 +42,18 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 📂 Core Architecture Specifications: Go to `docs/ARCHITECTURE.md` to inspect full component boundaries, interaction flows, sequence diagrams, and Saga rollback designs (built via Mermaid).
 
 📑 Architecture Decision Records: Go to `docs/adr/README.md` to track the explicit rationale, tradeoffs, and consequences behind every critical technical selection made in this stack.
+
+
+## 🎬 Verification & Demo Sandbox Execution
+
+To execute and verify the complete ApprovalFlow microservice ecosystem, run the following automated harness suite locally:
+
+```powershell
+# Step 1: Bootstrap the core infrastructure mesh grid and local LLM loop
+docker compose up -d --build
+
+# Step 2: Run the automated cross-service integration and full journeys verification harness
+npm run test:all
+```
+
+Every deterministic gateway routing choice, dynamic rule-engine evaluation check, and Saga compensation event boundary can be trace-audited dynamically by accessing the local OpenTelemetry dashboard layout at: `http://localhost:9411`
