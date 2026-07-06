@@ -48,29 +48,24 @@ logMessage('INFO', '0', 'Ingestion service bootstrap complete. Listening for inc
 
 
 app.post('/api/v1/expenses', async (req, res) => {
-
     const correlationId = req.headers['x-correlation-id'] || `corr_${crypto.randomUUID()}`;
     logMessage('INFO', correlationId, 'Received raw invoice submission request.');
 
     const body = req.body;
-
 
     if (!body || !body.id) {
         logMessage('WARN', correlationId, 'Rejected due to invalid JSON schema.');
         return res.status(400).json({ error: 'Invalid schema. Required: id' });
     }
 
-
     const vendor = body.vendor || 'UnknownVendor';
     const invoiceNumber = body.invoiceNumber || 'NoNumber';
     const total = body.total ?? 0.0;
-
 
     const hashString = `${vendor}_${invoiceNumber}_${total}`;
     const idempotencyKey = crypto.createHash('md5').update(hashString).digest('hex');
 
     try {
-
         const existingState = await daprClient.state.get(STATE_STORE_NAME, idempotencyKey);
 
         if (existingState && Object.keys(existingState).length > 0) {
@@ -86,7 +81,6 @@ app.post('/api/v1/expenses', async (req, res) => {
 
         const trackingId = body.id;
 
-
         await daprClient.state.save(STATE_STORE_NAME, [
             {
                 key: idempotencyKey,
@@ -100,7 +94,6 @@ app.post('/api/v1/expenses', async (req, res) => {
                 }
             }
         ]);
-
 
         const category = body.category || 'General';
 
@@ -127,10 +120,8 @@ app.post('/api/v1/expenses', async (req, res) => {
             note: body.note ?? null
         };
 
-
         await daprClient.pubsub.publish(PUB_SUB_NAME, PUB_SUB_TOPIC, eventPayload);
         logMessage('INFO', correlationId, `Successfully published '${PUB_SUB_TOPIC}' event for tracking_id: ${trackingId}`);
-
 
         return res.status(202).json({
             tracking_id: trackingId,
@@ -140,9 +131,14 @@ app.post('/api/v1/expenses', async (req, res) => {
 
     } catch (error) {
         logMessage('ERROR', correlationId, `Critical failure in ingestion processing: ${error.message}`);
-        return res.status(500).json({ error: 'Internal Server Error' });
+
+        const statusCode = error.status || error.statusCode || 500;
+        const errorMessage = statusCode === 500 ? 'Internal Server Error' : error.message;
+
+        return res.status(statusCode).json({ error: errorMessage });
     }
 });
+
 
 
 app.use((req, res) => {
