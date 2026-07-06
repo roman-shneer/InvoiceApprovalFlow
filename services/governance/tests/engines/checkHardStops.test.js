@@ -3,12 +3,11 @@ const { applyAutonomyOverride } = require('../../engines/applyAutonomyOverride')
 
 describe('checkHardStops Policy Compliance', () => {
     describe('AUTONOMY-HARDSTOPS Global Rules', () => {
-        test('triggers GLOBAL-VENDOR when flagged in rules payload', () => {
+        test('does not trigger GLOBAL-VENDOR for known vendors even when policy is active', () => {
             const invoice = { vendorKnown: true, vendor: 'Acme Corp' };
             const rules = [{ rule_id: 'GLOBAL-VENDOR' }];
             const result = checkHardStops(invoice, rules);
-            expect(result.triggered).toBe(true);
-            expect(result.rule).toBe('GLOBAL-VENDOR');
+            expect(result).toEqual({ triggered: false });
         });
 
         test('triggers GLOBAL-FRAUD when fraud flag matches constraint', () => {
@@ -24,6 +23,32 @@ describe('checkHardStops Policy Compliance', () => {
             const result = checkHardStops(invoice, rules);
             expect(result.triggered).toBe(true);
             expect(result.rule).toBe('MEAL-01');
+        });
+
+        test('does not trigger GLOBAL-VENDOR for known vendor when GLOBAL-VENDOR policy is active', () => {
+            const invoice = {
+                vendorKnown: true,
+                vendor: 'Hotel Adler',
+                currency: 'EUR',
+                total: 1200,
+                receiptPresent: true,
+                lineItems: [
+                    { quantity: 3, unitPrice: 400 }
+                ],
+                taxAmount: 0
+            };
+            const rules = [
+                { value: { rule_id: 'GLOBAL-VENDOR' } },
+                { value: { rule_id: 'GLOBAL-FX', value: 1000 } }
+            ];
+
+            const result = checkHardStops(invoice, rules);
+
+            expect(result).toEqual({
+                triggered: true,
+                rule: 'GLOBAL-FX',
+                reason: expect.stringContaining('FX hard stop')
+            });
         });
     });
 

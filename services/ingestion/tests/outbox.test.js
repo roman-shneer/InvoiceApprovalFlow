@@ -28,7 +28,7 @@ describe('Ingestion Service Transactional Outbox Pattern', () => {
         jest.clearAllMocks();
     });
 
-    test('POST /api/v1/expenses - Should save event log to outbox storage instead of publishing immediately', async () => {
+    test('POST /api/v1/expenses - Should save event log to outbox storage and dispatch it', async () => {
         const validInvoice = {
             id: "INV-OUTBOX-99",
             vendor: "Cloud Providers Inc",
@@ -45,9 +45,16 @@ describe('Ingestion Service Transactional Outbox Pattern', () => {
 
         expect(response.status).toBe(202);
 
-        expect(mockPubSubPublish).not.toHaveBeenCalled();
+        expect(mockPubSubPublish).toHaveBeenCalledWith(
+            'approval-pubsub',
+            'invoice.submitted',
+            expect.objectContaining({
+                tracking_id: 'INV-OUTBOX-99',
+                total: 999
+            })
+        );
 
-        expect(mockStateSave).toHaveBeenCalledWith('approval-state', expect.arrayContaining([
+        expect(mockStateSave).toHaveBeenNthCalledWith(1, 'approval-state', expect.arrayContaining([
             expect.objectContaining({
                 key: expect.stringContaining('outbox_'),
                 value: expect.objectContaining({
@@ -61,5 +68,15 @@ describe('Ingestion Service Transactional Outbox Pattern', () => {
                 })
             })
         ]));
+
+        expect(mockStateSave).toHaveBeenNthCalledWith(2, 'approval-state', [
+            expect.objectContaining({
+                key: expect.stringContaining('outbox_'),
+                value: expect.objectContaining({
+                    processed: true,
+                    processed_at: expect.any(String)
+                })
+            })
+        ]);
     });
 });

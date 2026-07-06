@@ -7,3 +7,7 @@ spec:
     handlers:
     - name: rate-limit-middleware
       type: middleware.http.ratelimit
+  tracing:
+    samplingRate: 1
+    zipkin:
+      endpointAddress: "http://approval-flow-zipkin:9411/api/v2/spans"

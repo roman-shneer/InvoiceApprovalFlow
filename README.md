@@ -1,44 +1,44 @@
-# ApprovalFlow — Architecture & Design Specification Registry
-
-This repository contains the complete technical design, microservice topology, and Architecture Decision Records (ADRs) for the **ApprovalFlow** expense management system. 
+This repository contains the complete technical design, microservice topology, and Architecture Decision Records (ADRs) for the ApprovalFlow expense management system.
 
 The architecture enforces a strict decoupling of high-throughput data ingestion, hybrid AI/deterministic compliance auditing, and resilient transactional ledger management.
 
----
-
-## 🗺️ Repository Structure
-
-```text
+🗺️ Repository Structure
+├── dapr/
+│   ├── components/                  # Dapr Component Manifests (State, Pub/Sub, Middleware)
+│   └── config.yaml                  # Global Dapr Configuration (Tracing & Pipelines)
+├── gateway/
+│   └── envoy.yaml                   # Envoy Proxy API Gateway Config
+├── services/
+│   ├── ingestion/                   # Ingestion Microservice Suite (Node.js Express)
+│   ├── governance/                  # Compliance & Rules Engine Agent (Node.js)
+│   ├── payment/                     # Financial Settlement Node (Node.js)
+│   └── management/                  # Backoffice Administration Panel (Node.js + Vue 3)
 ├── docs/
-│   ├── adr/                         # Architecture Decision Records (D2 Requirement)
+│   ├── adr/                         # Architecture Decision Records
 │   │   ├── README.md                # ADR Index & Table of Contents
-│   │   ├── 0001-postgres-core.md    # Core Relational Storage Selection
-│   │   ├── 0002-ingestion-php.md    # High-Throughput Ingestion (PHP Swoole)
-│   │   ├── 0003-redis-buffer.md     # Ephemeral In-Memory Storage Buffer
-│   │   ├── 0004-governance-ai.md    # Hybrid Rules & Local LLM Framework
-│   │   ├── 0005-ollama-llama3.md    # Private Offline LLM Infrastructure (Docker)
-│   │   ├── 0006-management-ui.md    # Backoffice System (Node.js + Vue 3)
-│   │   ├── 0007-dapr-adoption.md    # Sidecar Orchestration & Polyglot Runtime
-│   │   └── 0008-payment-saga.md     # Mock Payment Framework & Saga Design
-|   |   └── 0009-mongodb-store.md    # MongoDB Storage Selection
-|   |   └── 0010-ingestion-nodejs.md # Ingestion Service Node.js
-│   └── ARCHITECTURE.md              # System Boundary & Sequence Diagrams (D1 Requirement)
+│   │   ├── 0001-mongodb-core.md     # Core NoSQL Storage Selection (MongoDB Replica Set)
+│   │   ├── 0002-ingestion-nodejs.md # High-Throughput Ingestion Framework (Node.js Express)
+│   │   ├── 0003-rate-limiting.md    # Declarative Traffic Control via Dapr Middleware
+│   │   ├── 0004-governance-ai.md    # Hybrid Rules Engine & Local LLM Integration
+│   │   ├── 0005-ollama-llama3.md    # Private Offline LLM Infrastructure (Docker Loop)
+│   │   ├── 0006-management-ui.md    # Backoffice System Topology (Node.js + Vue 3)
+│   │   ├── 0007-dapr-adoption.md    # Sidecar Orchestration & Distributed System Abstraction
+│   │   ├── 0008-payment-saga.md     # Financial Settlement & Competing Saga Transactions
+│   │   └── 0009-opentelemetry.md    # Distributed Tracing Pipeline Integration (OTel + Zipkin)
+│   └── ARCHITECTURE.md              # System Boundary & Sequence Diagrams
 └── README.md                        # This Document
-```
 
----
+🚀 Key Architectural Pillars
 
-## 🚀 Key Architectural Pillars
+*   **Dynamic Autonomous Guardrails:** The system implements a programmatic boundary inside the Node.js Governance service linked to a live MongoDB policy database. Out of the box, it enforces strict defaults ($250 ceiling and 0.80 AI confidence requirement) while supporting runtime updates via runtime policy injection without system restarts.
+*   **Upstream Rate Limiting Guard:** To secure internal components from traffic spikes, a declarative Dapr rate-limiting middleware intercepts payload volumes at the API Gateway layer, gracefully propagating 429 Too Many Requests exception states back to clients.
+*   **100% Data Privacy (Local Ollama / Llama 3):** To protect sensitive corporate invoice data from external processing risks, all AI compliance inference is containerized entirely locally using the open-source Llama 3 model inside the Docker internal network loop.
+*   **Full Production Test Matrix Verification:** The entire polyglot codebase is covered by an automated Jest testing ecosystem, ensuring full pipeline safety by simulating mock stream event cycles, macrotask loops flushing, and edge-case exceptions behaviors.
+*   **Zero-Hardcode & Security Policies:** Real production credentials, database targets, and token pairs are entirely isolated into environment files and injected via Dapr Secrets. No plain-text access configuration is pushed to GitHub.
+*   **Distributed Tracing & Observability (OpenTelemetry + Zipkin):** Every microservice is fully instrumented using native Dapr OpenTelemetry integration. The tracing system runs on a 100% sampling rate (AlwaysOnSampler), collecting spans from Envoy Gateway, Ingestion, Pub/Sub channels, Rules Engine, and Payment Settler to construct full end-to-end trace flows visualised inside a Zipkin dashboard.
 
-1. **Deterministic Guardrails ($250 Cap):** The system implements a hard programmatic boundary inside the Node.js Governance service. Regardless of AI model responses, no transaction exceeding **$250.00** can be auto-approved; it is strictly escalated to a human reviewer.
-2. **Data Ingestion Buffer (Node.js + Redis):** To handle unpredictable traffic spikes without database connection exhaustion, the ingestion layer captures payloads asynchronously into an In-Memory buffer via Dapr State Store API.
-3. **100% Data Privacy (Local Ollama / Llama 3):** To protect sensitive corporate invoice data from external processing risks, all AI inference is containerized locally using the open-source Llama 3 model inside the Docker internal network loop.
-4. **Choreographed Saga Pattern:** Financial transactions handle edge-case network issues through event-driven compensating steps. If the mock bank node fails, balance reserves are programmatically rolled back.
-5. **Zero-Hardcode & Security Policies:** Real production credentials, database targets, and token pairs are entirely isolated into `.env` and injected via **Dapr Secrets**. No plain-text access configuration is pushed to GitHub.
+🔗 Quick Links for Reviewers
 
----
+📂 Core Architecture Specifications: Go to `docs/ARCHITECTURE.md` to inspect full component boundaries, interaction flows, sequence diagrams, and Saga rollback designs (built via Mermaid).
 
-## 🔗 Quick Links for Reviewers
-
-* 📂 **Core Architecture Specifications:** Go to [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) to inspect full component boundaries, interaction flows, sequence diagrams, and Saga rollback designs (built via Mermaid).
-* 📑 **Architecture Decision Records:** Go to [`docs/adr/README.md`](docs/adr/README.md) to track the explicit rationale, tradeoffs, and consequences behind every critical technical selection made in this stack.
+📑 Architecture Decision Records: Go to `docs/adr/README.md` to track the explicit rationale, tradeoffs, and consequences behind every critical technical selection made in this stack.
