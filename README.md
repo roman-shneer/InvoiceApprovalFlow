@@ -43,7 +43,6 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 
 📑 Architecture Decision Records: Go to `docs/adr/README.md` to track the explicit rationale, tradeoffs, and consequences behind every critical technical selection made in this stack.
 
-
 ## 🎬 Verification & Demo Sandbox Execution
 
 To execute and verify the complete ApprovalFlow microservice ecosystem, run the following automated harness suite locally:
@@ -57,3 +56,5 @@ npm run test:all
 ```
 
 Every deterministic gateway routing choice, dynamic rule-engine evaluation check, and Saga compensation event boundary can be trace-audited dynamically by accessing the local OpenTelemetry dashboard layout at: `http://localhost:9411`
+
+📂 **Core Platform Strategy Records:** Review our definitive trade-offs analysis regarding financial compliance thresholds and AI execution postures inside the official [Product Dilemma Documentation](docs/PRODUCT-DILEMMA.md).
