@@ -1,92 +1,60 @@
-const { checkHardStops } = require('../services/governance/engines/checkHardStops');
-const { applyAutonomyOverride } = require('../services/governance/engines/applyAutonomyOverride');
+const request = require('supertest');
 
-describe('Distributed Multi-Service End-to-End Journey Harness', () => {
-    const mockTraceContext = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+describe('Distributed Multi-Service Live End-to-End Journey Harness', () => {
+    const gatewayUrl = 'http://localhost:8000';
+    const mockTraceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+    const mockSpanId = "00f067aa0ba902b7";
+    const w3cTraceParent = `00-${mockTraceId}-${mockSpanId}-01`;
 
-    test('Journey INV-1001: End-to-End Auto-Approval & Confirmed Payment Pipeline with Trace Stitching', async () => {
+    test('Journey INV-1001: Gateway Ingestion Route Acceptance with W3C Trace Context Propagation', async () => {
         const incomingInvoice = {
-            tracking_id: "INV-1001",
+            id: "INV-1001",
+            vendor: "Acme Corp",
+            invoiceNumber: "AC-001",
             total: 45.00,
             currency: "USD",
             receiptPresent: true,
-            vendorKnown: true,
-            traceparent: mockTraceContext
+            vendorKnown: true
         };
 
-        expect(incomingInvoice.traceparent).toBe(mockTraceContext);
+        const response = await request(gatewayUrl)
+            .post('/api/v1/expenses')
+            .set('traceparent', w3cTraceParent)
+            .set('x-correlation-id', 'corr-inv-1001')
+            .send(incomingInvoice);
 
-        const hardStopResult = checkHardStops(incomingInvoice, []);
-        expect(hardStopResult.triggered).toBe(false);
-
-        const aiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.95 };
-        const finalRouting = applyAutonomyOverride(aiResult, incomingInvoice, []);
-        expect(finalRouting.recommendation).toBe('AUTO_APPROVE');
-
-        const paymentRecord = {
-            tracking_id: incomingInvoice.tracking_id,
-            status: 'CONFIRMED',
-            amount: incomingInvoice.total,
-            confirmed_at: new Date().toISOString()
-        };
-        expect(paymentRecord.status).toBe('CONFIRMED');
+        expect([200, 202]).toContain(response.status);
+        expect(response.body.tracking_id).toBe("INV-1001");
     });
 
-    test('Journey INV-1003: End-to-End Missing Receipt Blocking via Governance Edge', async () => {
-        const incomingInvoice = {
-            tracking_id: "INV-1003",
-            total: 85.00,
-            currency: "USD",
-            receiptPresent: false,
-            vendorKnown: true,
-            traceparent: mockTraceContext
+    test('Journey INV-1003: Ingestion Gate Duplicates Short-Circuiting Enforcement Checks', async () => {
+        const duplicateInvoice = {
+            id: "INV-1001",
+            vendor: "Acme Corp",
+            invoiceNumber: "AC-001",
+            total: 45.00
         };
 
-        const hardStopResult = checkHardStops(incomingInvoice, []);
-        expect(hardStopResult.triggered).toBe(true);
-        expect(hardStopResult.rule).toBe('GLOBAL-RECEIPT');
+        const response = await request(gatewayUrl)
+            .post('/api/v1/expenses')
+            .set('traceparent', w3cTraceParent)
+            .send(duplicateInvoice);
+
+        expect(response.status).toBe(200);
+        expect(response.body.message).toContain('Duplicate request detected');
     });
 
-    test('Journey INV-1007: End-to-End Human Review Escalation on Autonomy Caps Breach', async () => {
-        const incomingInvoice = {
-            tracking_id: "INV-1007",
-            total: 1250.00,
-            currency: "USD",
-            receiptPresent: true,
-            vendorKnown: true,
-            traceparent: mockTraceContext
+    test('Journey INV-1007: Out-of-Bounds Ingestion Contract Scheme Rejections Guard', async () => {
+        const brokenInvoice = {
+            vendor: "Broken Corp",
+            total: 100.00
         };
 
-        const hardStopResult = checkHardStops(incomingInvoice, []);
-        expect(hardStopResult.triggered).toBe(false);
+        const response = await request(gatewayUrl)
+            .post('/api/v1/expenses')
+            .send(brokenInvoice);
 
-        const aiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.98 };
-        const finalRouting = applyAutonomyOverride(aiResult, incomingInvoice, []);
-        expect(finalRouting.recommendation).toBe('HUMAN_REVIEW');
-        expect(finalRouting.triggered_rules).toContain('AUTONOMY-CEILING');
-    });
-
-    test('Journey INV-1012: Transactional Saga Rollback and Rejection State Propagation', async () => {
-        const incomingInvoice = {
-            tracking_id: "INV-1012",
-            total: 5000.00,
-            currency: "EUR",
-            receiptPresent: true,
-            vendorKnown: false,
-            bank_node_available: false,
-            traceparent: mockTraceContext
-        };
-
-        const hardStopResult = checkHardStops(incomingInvoice, []);
-        expect(hardStopResult.triggered).toBe(true);
-        expect(hardStopResult.rule).toBe('GLOBAL-FX');
-
-        const compensatedPaymentState = {
-            status: 'REJECTED_ROLLBACK',
-            amount: incomingInvoice.total,
-            reservation: { reserved: false }
-        };
-        expect(compensatedPaymentState.status).toBe('REJECTED_ROLLBACK');
-        expect(compensatedPaymentState.reservation.reserved).toBe(false);
+        expect(response.status).toBe(400);
+        expect(response.body.error).toContain('Invalid schema');
     });
 });
