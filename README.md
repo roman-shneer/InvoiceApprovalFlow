@@ -31,7 +31,7 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 ## 🚀 Key Architectural Pillars
 
 1. **Deterministic Guardrails ($250 Cap):** The system implements a hard programmatic boundary inside the Node.js Governance service. Regardless of AI model responses, no transaction exceeding **$250.00** can be auto-approved; it is strictly escalated to a human reviewer.
-2. **Data Ingestion Buffer (PHP Swoole + Redis):** To handle unpredictable traffic spikes without database connection exhaustion, the ingestion layer captures payloads asynchronously into an In-Memory buffer via Dapr State Store API.
+2. **Data Ingestion Buffer (Node.js + Redis):** To handle unpredictable traffic spikes without database connection exhaustion, the ingestion layer captures payloads asynchronously into an In-Memory buffer via Dapr State Store API.
 3. **100% Data Privacy (Local Ollama / Llama 3):** To protect sensitive corporate invoice data from external processing risks, all AI inference is containerized locally using the open-source Llama 3 model inside the Docker internal network loop.
 4. **Choreographed Saga Pattern:** Financial transactions handle edge-case network issues through event-driven compensating steps. If the mock bank node fails, balance reserves are programmatically rolled back.
 5. **Zero-Hardcode & Security Policies:** Real production credentials, database targets, and token pairs are entirely isolated into `.env` and injected via **Dapr Secrets**. No plain-text access configuration is pushed to GitHub.
