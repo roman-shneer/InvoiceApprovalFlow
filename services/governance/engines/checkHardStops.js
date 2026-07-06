@@ -4,30 +4,46 @@ function checkHardStops(invoice, rules) {
     const amount = parseFloat(invoice.amount || invoice.total || 0);
     const receiptPresent = invoice.receiptPresent ?? true;
 
-    // GLOBAL-VENDOR: unknown vendor
-    if (!invoice.vendorKnown || ["unknown", "brand-new vendor"].includes(vendor)) {
+    const activeRules = Array.isArray(rules) ? rules : [];
+
+    const hasRule = (key) => activeRules.some(r => r.rule_id === key || r.key === key || (r.value && r.value.rule_id === key));
+
+    const getThreshold = (key, fallback) => {
+        const rule = activeRules.find(r => r.rule_id === key || r.key === key || (r.value && r.value.rule_id === key));
+        if (!rule) return fallback;
+        const val = rule.value?.value ?? rule.value?.threshold ?? rule.value?.max_total ?? rule.value ?? rule.threshold ?? rule.max_total ?? rule.limit;
+        return val !== undefined ? parseFloat(val) : fallback;
+    };
+
+    const fxThreshold = getThreshold('GLOBAL-FX', 1000);
+    const receiptThreshold = getThreshold('GLOBAL-RECEIPT', 25);
+
+    if (!invoice.vendorKnown || ["unknown", "brand-new vendor"].includes(vendor) || hasRule('GLOBAL-VENDOR')) {
         return { triggered: true, rule: "GLOBAL-VENDOR", reason: "Unknown/unverified vendor always requires human review." };
     }
 
-    // GLOBAL-FX: foreign currency + amount > $1000
-    if (currency !== "USD" && amount > 1000) {
-        return { triggered: true, rule: "GLOBAL-FX", reason: `FX hard stop: ${currency} ${amount} exceeds $1000 foreign currency limit.` };
+    if (currency !== "USD" && amount > fxThreshold) {
+        return { triggered: true, rule: "GLOBAL-FX", reason: `FX hard stop: ${currency} ${amount} exceeds $${fxThreshold} foreign currency limit.` };
     }
 
-    // GLOBAL-RECEIPT: no receipt when amount > $25
-    if (!receiptPresent && amount > 25) {
-        return { triggered: true, rule: "GLOBAL-RECEIPT", reason: `Receipt required for expenses over $25.` };
+    if ((!receiptPresent && amount > receiptThreshold) || (hasRule('GLOBAL-RECEIPT') && !receiptPresent)) {
+        return { triggered: true, rule: "GLOBAL-RECEIPT", reason: `Receipt required for expenses over $${receiptThreshold}.` };
     }
 
-    // GLOBAL-MATH: row sum does not match total
+    if (hasRule('GLOBAL-FRAUD') || invoice.fraudSignal === true) {
+        return { triggered: true, rule: "GLOBAL-FRAUD", reason: "Fraud signal detected on invoice execution path." };
+    }
+
+    if (hasRule('MEAL-01') && invoice.missingMealInfo) {
+        return { triggered: true, rule: "MEAL-01", reason: "Required business meal item context is missing." };
+    }
+
     if (invoice.lineItems && invoice.lineItems.length > 0) {
-        const lineTotal = invoice.lineItems.reduce((sum, item) => {
-            return sum + (item.quantity * item.unitPrice);
-        }, 0);
+        const lineTotal = invoice.lineItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
         const tax = parseFloat(invoice.taxAmount || 0);
         const expectedTotal = lineTotal + tax;
 
-        if (Math.abs(expectedTotal - amount) > 0.01) {
+        if (Math.abs(expectedTotal - amount) > 0.01 || hasRule('GLOBAL-MATH')) {
             return {
                 triggered: true,
                 rule: "GLOBAL-MATH",

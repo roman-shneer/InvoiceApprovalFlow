@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.vscode
+.idea
+tests
+coverage
+dist
+*.md
+services/governance
+services/ingestion

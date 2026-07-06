@@ -161,4 +161,8 @@ async function publishInvoiceProcessedNotification(pendingInvoice, finalStatus, 
     }
 }
 
-start().catch(console.error);
+module.exports = { start, publishInvoiceProcessedNotification, server, daprClient };
+
+if (require.main === module) {
+    start().catch(console.error);
+}
