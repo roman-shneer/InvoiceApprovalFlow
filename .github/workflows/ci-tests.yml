@@ -1,6 +1,5 @@
 name: CI Infrastructure and Service Testing
 
-
 on:
   push:
     branches: [ "develop" ]
@@ -12,18 +11,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    
     - name: Checkout repository code
       uses: actions/checkout@v4
 
-    
-    - name: Create secrets mock placeholder
-      run: |
-        mkdir -p dapr
-        echo '{"postgres-connection-string":"mongodb://localhost:27017","redis-password":""}' > dapr/secrets.json
+    - name: Setup Node.js environment
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: 'npm'
+        cache-dependency-path: |
+          services/ingestion/package-lock.json
+          services/governance/package-lock.json
+          services/payment/package-lock.json
 
+    - name: Install Ingestion Service Dependencies
+      run: npm ci --prefix services/ingestion
+
+    - name: Install Governance Agent Dependencies
+      run: npm ci --prefix services/governance
+
+    - name: Install Payment Service Dependencies
+      run: npm ci --prefix services/payment
     
-    - name: Build and Run Dockerized PHP Unit Tests
-      run: |
-        docker compose build --no-cache ingestion-service
-##
+    - name: Install Management Service Dependencies
+      run: npm ci --prefix services/management
+
+    - name: Run Ingestion Service Suite
+      run: npm test --prefix services/ingestion
+
+    - name: Run Governance Agent Suite
+      run: npm test --prefix services/governance
+
+    - name: Run Payment Service Suite
+      run: npm test --prefix services/payment
+
+    - name: Run Management Service Suite
+      run: npm test --prefix services/management

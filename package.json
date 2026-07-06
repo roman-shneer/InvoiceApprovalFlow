@@ -1,0 +1,12 @@
+{
+    "name": "invoice-approval-flow",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "test:ingestion": "npm test --prefix services/ingestion",
+        "test:governance": "npm test --prefix services/governance",
+        "test:payment": "npm test --prefix services/payment",
+        "test:management": "npm test --prefix services/management",
+        "test:all": "npx concurrently \"npm run test:ingestion\" \"npm run test:governance\" \"npm run test:payment\" \"npm run test:management\""
+    }
+}
