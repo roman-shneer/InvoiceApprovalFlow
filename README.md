@@ -10,18 +10,20 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 
 ```text
 ├── docs/
-│   ├── adr/                       # Architecture Decision Records (D2 Requirement)
-│   │   ├── README.md              # ADR Index & Table of Contents
-│   │   ├── 0001-postgres-core.md  # Core Relational Storage Selection
-│   │   ├── 0002-ingestion-php.md  # High-Throughput Ingestion (PHP Swoole)
-│   │   ├── 0003-redis-buffer.md   # Ephemeral In-Memory Storage Buffer
-│   │   ├── 0004-governance-ai.md  # Hybrid Rules & Local LLM Framework
-│   │   ├── 0005-ollama-llama3.md  # Private Offline LLM Infrastructure (Docker)
-│   │   ├── 0006-management-ui.md  # Backoffice System (Node.js + Vue 3)
-│   │   ├── 0007-dapr-adoption.md  # Sidecar Orchestration & Polyglot Runtime
-│   │   └── 0008-payment-saga.md   # Mock Payment Framework & Saga Design
-│   └── ARCHITECTURE.md            # System Boundary & Sequence Diagrams (D1 Requirement)
-└── README.md                      # This Document
+│   ├── adr/                         # Architecture Decision Records (D2 Requirement)
+│   │   ├── README.md                # ADR Index & Table of Contents
+│   │   ├── 0001-postgres-core.md    # Core Relational Storage Selection
+│   │   ├── 0002-ingestion-php.md    # High-Throughput Ingestion (PHP Swoole)
+│   │   ├── 0003-redis-buffer.md     # Ephemeral In-Memory Storage Buffer
+│   │   ├── 0004-governance-ai.md    # Hybrid Rules & Local LLM Framework
+│   │   ├── 0005-ollama-llama3.md    # Private Offline LLM Infrastructure (Docker)
+│   │   ├── 0006-management-ui.md    # Backoffice System (Node.js + Vue 3)
+│   │   ├── 0007-dapr-adoption.md    # Sidecar Orchestration & Polyglot Runtime
+│   │   └── 0008-payment-saga.md     # Mock Payment Framework & Saga Design
+|   |   └── 0009-mongodb-store.md    # MongoDB Storage Selection
+|   |   └── 0010-ingestion-nodejs.md # Ingestion Service Node.js
+│   └── ARCHITECTURE.md              # System Boundary & Sequence Diagrams (D1 Requirement)
+└── README.md                        # This Document
 ```
 
 ---
