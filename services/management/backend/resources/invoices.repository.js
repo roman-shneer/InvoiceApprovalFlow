@@ -5,6 +5,14 @@ class InvoicesRepository {
     constructor(daprClient) {
         this.daprClient = daprClient;
     }
+
+    parseInvoiceRecord(item) {
+        const rawPayload = item?.data ?? item?.value ?? null;
+        const payload = typeof rawPayload === 'string' ? JSON.parse(rawPayload) : (rawPayload || {});
+        const key = item?.key || item?._id || payload?.tracking_id || payload?.id;
+        return { ...payload, key };
+    }
+
     async sendInvoices(invoices) {
         const apiURL = process.env.INVOICE_URL;
         const results = [];
@@ -28,34 +36,28 @@ class InvoicesRepository {
     }
 
     async getInvoices(targetStatus) {
-        let filter = {};
-        let sorting = [
-            {
-                key: "submitted_at",
-                order: "DESC"
-            }
-        ];
-        if (targetStatus == "HUMAN_REVIEW") {
-            filter = {
-                EQ: {
-                    "status": targetStatus
-                }
-            };
-            sorting = [
-                {
-                    key: "submitted_at",
-                    order: "ASC"
-                }
-            ];
-        }
         const response = await this.daprClient.state.query(STATE_STORE_NAME, {
-            filter: filter,
-            sort: sorting,
+            filter: {},
             page: { limit: 100 }
         });
 
-        const invoices = response.results.map(item => ({ ...(item.data || {}), key: item.key }));
-        return invoices || [];
+        const results = Array.isArray(response?.results) ? response.results : [];
+        const invoices = results.map(item => this.parseInvoiceRecord(item));
+
+        const filtered = targetStatus
+            ? invoices.filter(invoice => invoice.status === targetStatus)
+            : invoices;
+
+        filtered.sort((a, b) => {
+            const aDate = new Date(a.submitted_at || a.createdAt || 0).valueOf();
+            const bDate = new Date(b.submitted_at || b.createdAt || 0).valueOf();
+            if (targetStatus === 'HUMAN_REVIEW') {
+                return aDate - bDate;
+            }
+            return bDate - aDate;
+        });
+
+        return filtered;
 
     }
 

@@ -402,7 +402,7 @@ async function start() {
 
 
 
-    const userResource = new UserRepository(daprClient);          // Передали пул БД в ресурс!
+    const userResource = new UserRepository(daprClient);
     const cryptoEngine = new CryptoEngine();
     const authManager = new AuthManager(userResource, cryptoEngine);
 
