@@ -22,11 +22,11 @@ async function start() {
             const invoice = eventData && eventData.data ? eventData.data : eventData;
             const trackingId = invoice.tracking_id || invoice.id || 'unknown';
             console.log(`[${trackingId}] Payment request received`);
-
-            // Reserve funds (persist reservation state)
-            const reservationKey = `reservation:${trackingId}`;
+            if (invoice.status != 'AUTO_APPROVE' && invoice.status != 'APPROVED') {
+                return 'REJECTED';
+            }
+            // Reserve funds by updating the invoice in mongo-invoices with a payment.reservation
             const reservation = {
-                tracking_id: trackingId,
                 reserved: true,
                 amount: invoice.total || invoice.amount || 0,
                 currency: invoice.currency || 'USD',
@@ -34,9 +34,22 @@ async function start() {
             };
 
             try {
-                await daprClient.state.save('approval-state', [{ key: reservationKey, value: reservation }]);
+                // attempt to load existing invoice record from mongo-invoices
+                let stored = await daprClient.state.get('mongo-invoices', trackingId);
+                let storedInvoice = null;
+                if (stored) {
+                    storedInvoice = typeof stored === 'string' ? JSON.parse(stored) : stored;
+                } else {
+                    // fallback: create minimal invoice record
+                    storedInvoice = { tracking_id: trackingId };
+                }
+
+                storedInvoice.payment = storedInvoice.payment || {};
+                storedInvoice.payment.reservation = reservation;
+
+                await daprClient.state.save('mongo-invoices', [{ key: trackingId, value: storedInvoice }]);
             } catch (err) {
-                console.error(`[${trackingId}] Failed to save reservation:`, err.message);
+                console.error(`[${trackingId}] Failed to save reservation on invoice record:`, err.message);
                 // publish failure
                 await daprClient.pubsub.publish(PUB_SUB, 'payment.failed', { tracking_id: trackingId, reason: 'reservation_failed' });
                 return 'RETRY';
@@ -46,14 +59,24 @@ async function start() {
             const scenario = invoice.scenario || invoice.note || '';
             if (typeof scenario === 'string' && scenario.includes('payment-failure')) {
                 console.log(`[${trackingId}] Simulating payment failure for scenario ${scenario}`);
-                // release reservation
-                await daprClient.state.delete('approval-state', reservationKey);
+                try {
+                    // mark payment as failed on the invoice and remove reservation
+                    let stored = await daprClient.state.get('mongo-invoices', trackingId);
+                    let storedInvoice = stored ? (typeof stored === 'string' ? JSON.parse(stored) : stored) : { tracking_id: trackingId };
+                    storedInvoice.payment = storedInvoice.payment || {};
+                    storedInvoice.payment.status = 'FAILED';
+                    storedInvoice.payment.reason = 'simulated_failure';
+                    delete storedInvoice.payment.reservation;
+                    storedInvoice.payment.failed_at = new Date().toISOString();
+                    await daprClient.state.save('mongo-invoices', [{ key: trackingId, value: storedInvoice }]);
+                } catch (err) {
+                    console.error(`[${trackingId}] Failed to persist simulated failure:`, err.message);
+                }
                 await daprClient.pubsub.publish(PUB_SUB, 'payment.failed', { tracking_id: trackingId, reason: 'simulated_failure' });
                 return 'SUCCESS';
             }
 
             // Otherwise commit payment (simulate external bank call success)
-            const paymentRecordKey = `payment:${trackingId}`;
             const paymentRecord = {
                 tracking_id: trackingId,
                 status: 'CONFIRMED',
@@ -61,16 +84,23 @@ async function start() {
                 currency: reservation.currency,
                 confirmed_at: new Date().toISOString()
             };
+            try {
+                // attach payment record to the invoice and remove reservation
+                let stored = await daprClient.state.get('mongo-invoices', trackingId);
+                let storedInvoice = stored ? (typeof stored === 'string' ? JSON.parse(stored) : stored) : { tracking_id: trackingId };
+                storedInvoice.payment = paymentRecord;
+                storedInvoice.payment.confirmed_at = paymentRecord.confirmed_at;
+                await daprClient.state.save('mongo-invoices', [{ key: trackingId, value: storedInvoice }]);
 
-            await daprClient.state.save('approval-state', [{ key: paymentRecordKey, value: paymentRecord }]);
+                // Publish confirmed event
+                await daprClient.pubsub.publish(PUB_SUB, 'payment.confirmed', { tracking_id: trackingId });
 
-            // Publish confirmed event
-            await daprClient.pubsub.publish(PUB_SUB, 'payment.confirmed', { tracking_id: trackingId });
-
-            // Optionally cleanup reservation
-            await daprClient.state.delete('approval-state', reservationKey);
-
-            console.log(`[${trackingId}] Payment confirmed and published`);
+                console.log(`[${trackingId}] Payment confirmed and published`);
+            } catch (err) {
+                console.error(`[${trackingId}] Failed to persist payment record on invoice:`, err.message);
+                await daprClient.pubsub.publish(PUB_SUB, 'payment.failed', { tracking_id: trackingId, reason: 'persist_failed' });
+                return 'RETRY';
+            }
             return 'SUCCESS';
         } catch (err) {
             console.error('Payment handler error:', err.message);
