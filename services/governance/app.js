@@ -86,7 +86,7 @@ async function start() {
                         }
 
                         // 3. Apply autonomy override / threshold logic
-                        const finalResult = applyAutonomyOverride(aiResult, invoice);
+                        const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules);
                         const finalStatus = finalResult.recommendation === 'AUTO_APPROVE' ? 'AUTO_APPROVE' : 'HUMAN_REVIEW';
                         const aiApproved = finalResult.recommendation === 'AUTO_APPROVE';
 
