@@ -49,7 +49,7 @@ db.policies.insertMany([
     {
         "_id": "SAAS-01",
         "_key": "SAAS-01",
-        "value": { "rule_id": "SAAS-01", "category": "Software / SaaS", "rule_text": "Subscriptions are policy-eligible only if the total monthly cost is strictly less than $200.", "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "SAAS-01", "category": "Software / SaaS", "rule_text": "Subscriptions are policy-eligible up to $200 / month.", "is_active": true, "created_at": new Date() },
         "_etag": UUID().toString("hex"),
         "_ttl": null
     },
