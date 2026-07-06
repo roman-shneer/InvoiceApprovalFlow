@@ -44,7 +44,7 @@ export default {
             try {
                 const result = await this.api.SendInvoice(invoiceData);
                 this.feedbackType = 'success';
-                this.feedbackMessage = 'Invoice sent successfully.';
+                this.feedbackMessage = result?.results?.[0]?.message || result?.message || 'Invoice sent successfully.';
                 this.invoice = '';
             } catch (err) {
                 this.feedbackType = 'error';

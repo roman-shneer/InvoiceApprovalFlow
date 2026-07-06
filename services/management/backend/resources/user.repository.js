@@ -29,7 +29,6 @@ class UserRepository {
 
     async updateWithPassword(key, username, role, passwordHash) {
         const data = { username, role, 'password_hash': passwordHash };
-        console.log("updateWithPassword", data);
         const result = await this.daprClient.state.save(STATE_STORE_NAME, [
             {
                 key: key,
@@ -42,7 +41,6 @@ class UserRepository {
     async updateWithoutPassword(key, username, role) {
         const user = await this.daprClient.state.get(STATE_STORE_NAME, username);
         const data = { username, role, 'password_hash': user.password_hash };
-        console.log("updateWithoutPassword", data);
         const result = await this.daprClient.state.save(STATE_STORE_NAME, [
             {
                 key: key,
