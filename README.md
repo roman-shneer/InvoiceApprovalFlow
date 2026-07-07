@@ -43,6 +43,9 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 
 📑 Architecture Decision Records: Go to `docs/adr/README.md` to track the explicit rationale, tradeoffs, and consequences behind every critical technical selection made in this stack.
 
+📂 **Distributed Runtime Evidence & Proofs:** Go to [docs/JOURNEYS-EVIDENCE.md](docs/JOURNEYS-EVIDENCE.md) to inspect the immutable multi-service event logs, W3C trace tracking configurations, and final MongoDB state snapshots for all mandatory application journeys (INV-1001, INV-1003, INV-1007, INV-1012).
+
+
 ## 🎬 Verification & Demo Sandbox Execution
 
 To execute and verify the complete ApprovalFlow microservice ecosystem, run the following automated harness suite locally:
