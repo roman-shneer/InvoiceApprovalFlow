@@ -25,7 +25,7 @@ describe('Distributed Multi-Service Live End-to-End Journey Harness', () => {
 
         expect([200, 202]).toContain(response.status);
         expect(response.body.tracking_id).toBe("INV-1001");
-    });
+    }, 30000);
 
     test('Journey INV-1003: Ingestion Gate Duplicates Short-Circuiting Enforcement Checks', async () => {
         const duplicateInvoice = {
@@ -42,7 +42,7 @@ describe('Distributed Multi-Service Live End-to-End Journey Harness', () => {
 
         expect(response.status).toBe(200);
         expect(response.body.message).toContain('Duplicate request detected');
-    });
+    }, 30000);
 
     test('Journey INV-1007: Out-of-Bounds Ingestion Contract Scheme Rejections Guard', async () => {
         const brokenInvoice = {
@@ -56,5 +56,5 @@ describe('Distributed Multi-Service Live End-to-End Journey Harness', () => {
 
         expect(response.status).toBe(400);
         expect(response.body.error).toContain('Invalid schema');
-    });
+    }, 30000);
 });
