@@ -27,6 +27,7 @@ jobs:
           services/ingestion/package-lock.json
           services/governance/package-lock.json
           services/payment/package-lock.json
+          services/management/package-lock.json
 
     - name: Install Ingestion Service Dependencies
       run: npm ci --prefix services/ingestion
@@ -37,6 +38,9 @@ jobs:
     - name: Install Payment Service Dependencies
       run: npm ci --prefix services/payment
 
+    - name: Install Management Service Dependencies
+      run: npm ci --prefix services/management
+
     - name: Run Ingestion Service Suite
       run: npm test --prefix services/ingestion
 
@@ -46,8 +50,11 @@ jobs:
     - name: Run Payment Service Suite
       run: npm test --prefix services/payment
 
+    - name: Run Management Service Suite
+      run: npm test --prefix services/management
+
     - name: Run Distributed E2E Harness Verification
-      run: npm run test:e2e
+      run: npx jest tests/distributedE2E.test.js --forceExit
 
   deploy-stage:
     needs: run-tests
@@ -64,7 +71,4 @@ jobs:
     - name: Simulate Production Container Delivery
       run: |
         echo "🚀 Starting CD Deployment Stage Pipeline Automation..."
-        echo "Compiling and validating Dockerfile layers blueprints..."
         docker build -f services/ingestion/Dockerfile -t approvalflow/ingestion:latest . --output type=cacheonly
-        echo "🎉 CD simulation success! Ready for container registry propagation."
-
