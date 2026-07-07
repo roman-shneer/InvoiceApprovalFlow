@@ -6,7 +6,7 @@
         "test:ingestion": "npm test --prefix services/ingestion",
         "test:governance": "npm test --prefix services/governance",
         "test:payment": "npm test --prefix services/payment",
-        "test:e2e": "npx jest tests/distributedE2E.test.js",
+        "test:e2e": "npx jest tests/distributedE2E.test.js --forceExit",
         "test:all": "npx concurrently \"npm run test:ingestion\" \"npm run test:governance\" \"npm run test:payment\" \"npm run test:e2e\""
     },
     "devDependencies": {
