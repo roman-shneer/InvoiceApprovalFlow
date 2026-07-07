@@ -54,8 +54,13 @@ jobs:
     - name: Start Live Infrastructure Mesh Grid via Docker Compose
       run: |
         docker compose up -d
-        echo "Awaiting system boundaries and Envoy Gateway proxy sockets initialization..."
-        sleep 25
+        echo "⏳ Waiting for MongoDB Replica Set, Redis Server, and Dapr Sidecars boot cycles..."
+        sleep 15
+        
+        echo "🔍 Polling Envoy API Gateway socket on port 8000 for verification healthcheck ready state..."
+        timeout 60s sh -c 'until curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/unknown-route | grep -E "404|200"; do echo "Envoy routing tables warming up... sleeping 3s"; sleep 3; done'
+        
+        echo "🚀 Infrastructure baseline network verified successfully!"
         docker compose ps
 
     - name: Run Distributed Live E2E Harness
