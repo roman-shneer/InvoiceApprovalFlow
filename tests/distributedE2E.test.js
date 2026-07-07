@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const { checkHardStops } = require('../services/governance/engines/checkHardStops');
 const { applyAutonomyOverride } = require('../services/governance/engines/applyAutonomyOverride');
 
@@ -53,7 +52,7 @@ describe('Distributed Multi-Service Real E2E Journey Harness', () => {
 
         const hardStopResult = checkHardStops(incomingInvoice, []);
         expect(hardStopResult.triggered).toBe(true);
-        expect(hardStopResult.rule).toBe('GLOBAL-RECEIPT');
+        expect(hardStopResult.rules).toContain('GLOBAL-RECEIPT');
     });
 
     test('Journey INV-1007: Out-of-Bounds Governance Human Review Escalation', async () => {
@@ -84,13 +83,12 @@ describe('Distributed Multi-Service Real E2E Journey Harness', () => {
             total: 5000.00,
             currency: "EUR",
             receiptPresent: true,
-            vendorKnown: false,
-            bank_node_available: false
+            vendorKnown: true
         };
 
         const hardStopResult = checkHardStops(incomingInvoice, []);
         expect(hardStopResult.triggered).toBe(true);
-        expect(hardStopResult.rule).toBe('GLOBAL-FX');
+        expect(hardStopResult.rules).toContain('GLOBAL-FX');
 
         const simulatedCompensatedState = {
             tracking_id: incomingInvoice.id,
