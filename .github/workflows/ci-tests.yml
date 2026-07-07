@@ -24,13 +24,9 @@ jobs:
         node-version: 20
         cache: 'npm'
         cache-dependency-path: |
-          package-lock.json
           services/ingestion/package-lock.json
           services/governance/package-lock.json
           services/payment/package-lock.json
-
-    - name: Install Monorepo Root Dependencies
-      run: npm install --save-dev @dapr/dapr supertest jest concurrently
 
     - name: Install Ingestion Service Dependencies
       run: npm ci --prefix services/ingestion
@@ -50,7 +46,7 @@ jobs:
     - name: Run Payment Service Suite
       run: npm test --prefix services/payment
 
-    - name: Run Distributed Live E2E Harness
+    - name: Run Distributed E2E Harness Verification
       run: npm run test:e2e
 
   deploy-stage:
