@@ -40,9 +40,9 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 
 🔗 Quick Links for Reviewers
 
-📂 Core Architecture Specifications: Go to `docs/ARCHITECTURE.md` to inspect full component boundaries, interaction flows, sequence diagrams, and Saga rollback designs (built via Mermaid).
+📂 Core Architecture Specifications: Go to [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) to inspect full component boundaries, interaction flows, sequence diagrams, and Saga rollback designs (built via Mermaid).
 
-📑 Architecture Decision Records: Go to `docs/adr/README.md` to track the explicit rationale, tradeoffs, and consequences behind every critical technical selection made in this stack.
+📑 Architecture Decision Records: Go to [docs/adr/README.md](docs/adr/README.md) to track the explicit rationale, tradeoffs, and consequences behind every critical technical selection made in this stack.
 
 📂 **Distributed Runtime Evidence & Proofs:** Go to [docs/JOURNEYS-EVIDENCE.md](docs/JOURNEYS-EVIDENCE.md) to inspect the immutable multi-service event logs, W3C trace tracking configurations, and final MongoDB state snapshots for all mandatory application journeys (INV-1001, INV-1003, INV-1007, INV-1012).
 
