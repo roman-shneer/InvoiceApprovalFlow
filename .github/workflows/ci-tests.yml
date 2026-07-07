@@ -2,9 +2,13 @@ name: CI Infrastructure and Service Testing
 
 on:
   push:
-    branches: [ "develop" ]
+    branches:
+      - "develop"
+      - "feature/ci-github-actions"
   pull_request:
-    branches: [ "develop" ]
+    branches:
+      - "develop"
+      - "feature/ci-github-actions"
 
 jobs:
   run-tests:
@@ -45,32 +49,8 @@ jobs:
     - name: Run Payment Service Suite
       run: npm test --prefix services/payment
 
-    - name: Create Secrets Mock Placements Environment File
-      run: |
-        echo "REDIS_PASSWORD=mock_redis_secure_pass" > .env
-        echo "MONGO_DB=approvalflow" >> .env
-        echo "🎉 Generated environment secrets manifest variables for cloud docker runtime loop context."
-
-    - name: Start Live Infrastructure Mesh Grid via Docker Compose
-      run: |
-        docker compose up -d
-        echo "⏳ Waiting for MongoDB Replica Set, Redis Server, and Dapr Sidecars boot cycles..."
-        sleep 15
-        
-        echo "🔍 Polling Envoy API Gateway socket on port 8000 for verification healthcheck ready state..."
-        timeout 60s sh -c 'until curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/unknown-route | grep -E "404|200"; do echo "Envoy routing tables warming up... sleeping 3s"; sleep 3; done'
-        
-        echo "🚀 Infrastructure baseline network verified successfully!"
-        docker compose ps
-
     - name: Run Distributed Live E2E Harness
       run: npm run test:e2e
-
-    - name: Tear Down Infrastructure Environment
-      if: always()
-      run: |
-        touch .env
-        docker compose down --volumes --remove-orphans
 
   deploy-stage:
     needs: run-tests
