@@ -2,6 +2,7 @@ This repository contains the complete technical design, microservice topology, a
 
 The architecture enforces a strict decoupling of high-throughput data ingestion, hybrid AI/deterministic compliance auditing, and resilient transactional ledger management.
 
+```text
 🗺️ Repository Structure
 ├── dapr/
 │   ├── components/                  # Dapr Component Manifests (State, Pub/Sub, Middleware)
@@ -27,7 +28,7 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 │   │   └── 0009-opentelemetry.md    # Distributed Tracing Pipeline Integration (OTel + Zipkin)
 │   └── ARCHITECTURE.md              # System Boundary & Sequence Diagrams
 └── README.md                        # This Document
-
+```
 🚀 Key Architectural Pillars
 
 *   **Dynamic Autonomous Guardrails:** The system implements a programmatic boundary inside the Node.js Governance service linked to a live MongoDB policy database. Out of the box, it enforces strict defaults ($250 ceiling and 0.80 AI confidence requirement) while supporting runtime updates via runtime policy injection without system restarts.
