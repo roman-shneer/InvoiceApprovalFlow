@@ -27,7 +27,7 @@ async function start() {
                 return 'REJECTED';
             }
 
-            if (invoice.bank_node_available === false || trackingId === 'INV-1012') {
+            if (invoice.bank_node_available === false || scenario.includes('payment-failure')) {
                 console.log(`[${trackingId}] Bank node transaction rejected. Triggering Saga compensation workflow.`);
                 try {
                     let stored = await daprClient.state.get('mongo-invoices', trackingId);
