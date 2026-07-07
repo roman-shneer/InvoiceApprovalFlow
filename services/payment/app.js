@@ -23,8 +23,11 @@ const DEPARTMENT_BUDGET_REGISTRY = {
 async function start() {
     await server.pubsub.subscribe(PUB_SUB, 'payment.requested', async (eventData) => {
         try {
-            const invoice = eventData && eventData.data ? eventData.data : eventData;
+            const invoice = eventData.data || eventData;
             const trackingId = invoice.tracking_id || invoice.id || 'unknown';
+            const departmentId = invoice.department || 'default-pool';
+            const currency = (invoice.currency || 'USD').toUpperCase();
+            const originalAmount = parseFloat(invoice.total || invoice.amount || 0);
             console.log(`[${trackingId}] Payment request received`);
 
             if (invoice.status !== 'AUTO_APPROVE' && invoice.status !== 'APPROVED' && invoice.status !== 'AUTO_APPROVED') {
@@ -59,8 +62,11 @@ async function start() {
                 }
             }
 
-            const departmentId = invoice.department || "default-pool";
-            const invoiceAmount = parseFloat(invoice.total || invoice.amount || 0);
+            let amountInUSD = originalAmount;
+            if (currency === 'EUR') {
+                amountInUSD = originalAmount * 1.10;
+                console.log(`[Payment FX] Evaluated ${originalAmount} EUR as $${amountInUSD} USD against department allocation boundaries.`);
+            }
 
             if (DEPARTMENT_BUDGET_REGISTRY[departmentId] === undefined) {
                 DEPARTMENT_BUDGET_REGISTRY[departmentId] = 5000.00;
@@ -68,8 +74,8 @@ async function start() {
 
             const currentRemainingBudget = DEPARTMENT_BUDGET_REGISTRY[departmentId];
 
-            if (currentRemainingBudget - invoiceAmount < 0) {
-                console.error(`[${trackingId}] Saga Execution Terminated: Insufficient Budget Pool for department [${departmentId}]. Remaining: $${currentRemainingBudget}, Required: $${invoiceAmount}`);
+            if (currentRemainingBudget - amountInUSD < 0) {
+                console.error(`[${trackingId}] Saga Terminated: Insufficient Budget Pool. Remaining: $${currentRemainingBudget}, Required in USD: $${amountInUSD}`);
                 try {
                     let stored = await daprClient.state.get('mongo-invoices', trackingId);
                     let storedInvoice = stored ? (typeof stored === 'string' ? JSON.parse(stored) : stored) : { tracking_id: trackingId };
@@ -92,8 +98,8 @@ async function start() {
 
             const reservation = {
                 reserved: true,
-                amount: invoiceAmount,
-                currency: invoice.currency || 'USD',
+                amount: originalAmount,
+                currency: currency,
                 created_at: new Date().toISOString()
             };
 
@@ -129,14 +135,14 @@ async function start() {
                 return 'SUCCESS';
             }
 
-            DEPARTMENT_BUDGET_REGISTRY[departmentId] -= invoiceAmount;
+            DEPARTMENT_BUDGET_REGISTRY[departmentId] -= amountInUSD;
             console.log(`[${trackingId}] Budget pool allocated successfully for [${departmentId}]. Remaining balance left: $${DEPARTMENT_BUDGET_REGISTRY[departmentId]}`);
 
             const paymentRecord = {
                 tracking_id: trackingId,
                 status: 'CONFIRMED',
-                amount: invoiceAmount,
-                currency: invoice.currency || 'USD',
+                amount: originalAmount,
+                currency: currency,
                 confirmed_at: new Date().toISOString()
             };
 
