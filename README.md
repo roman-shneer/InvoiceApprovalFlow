@@ -61,4 +61,28 @@ npm run test:all
 
 Every deterministic gateway routing choice, dynamic rule-engine evaluation check, and Saga compensation event boundary can be trace-audited dynamically by accessing the local OpenTelemetry dashboard layout at: `http://localhost:9411`
 
+### 👥 Pre-seeded Management Backoffice User Credentials & Web Access
+To access the Management Backoffice Web UI Dashboard, open your browser and navigate to: **`http://localhost/`** (or port `80` inside your local container grid runtime environment).
+
+The system comes pre-seeded with 3 explicit user roles inside MongoDB to verify Role-Based Access Control (RBAC) and dynamic resume state workflows:
+
+1. **Finance Submitter (Employee Role)**
+   * **Web Access Portal:** `http://localhost/`
+   * **Login / Username:** `submitter`
+   * **Password:** `submitter`
+   * **Privileges:** Can submit raw expense invoices, view own submission tracking history pipelines, but has ZERO rights to approve or alter system autonomy ceiling rules.
+
+2. **Compliance Auditor / Approver (Manager Role)**
+   * **Web Access Portal:** `http://localhost/`
+   * **Login / Username:** `approver`
+   * **Password:** `approver`
+   * **Privileges:** Full visibility into the active `HUMAN_REVIEW` escalation queues. Authorized to review AI confidence scores, view policy violations citations, and trigger manual "Approve/Reject" override actions to resume paused durable workflows.
+
+3. **System Administrator (Admin Role)**
+   * **Web Access Portal:** `http://localhost/`
+   * **Login / Username:** `admin`
+   * **Password:** `admin`
+   * **Privileges:** Superuser rights. Authorized to modify database parametric parameters, hot-swap the dynamic threshold bounds (`AUTONOMY-CEILING` and `AUTONOMY-CONFIDENCE` values) inside MongoDB runtime context without restarts.
+
+
 📂 **Core Platform Strategy Records:** Review our definitive trade-offs analysis regarding financial compliance thresholds and AI execution postures inside the official [Product Dilemma Documentation](docs/PRODUCT-DILEMMA.md).
