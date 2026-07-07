@@ -9,6 +9,7 @@
     },
     "dependencies": {
         "@dapr/dapr": "^3.4.0",
+        "dotenv": "^17.4.2",
         "express": "^4.19.2",
         "ollama": "^0.6.3"
     },

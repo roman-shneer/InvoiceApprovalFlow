@@ -6,6 +6,7 @@ const AUTONOMY = {
 function applyAutonomyOverride(aiResult, invoice, rules) {
     const activeRules = Array.isArray(rules) ? rules : [];
     const amount = parseFloat(invoice.amount || invoice.total || 0);
+
     const confidence = parseFloat(aiResult.confidence || invoice.confidence || 0);
 
     const ceilingRule = activeRules.find(r => r.rule_id === 'AUTONOMY-CEILING' || r.key === 'AUTONOMY-CEILING' || (r.value && r.value.rule_id === 'AUTONOMY-CEILING'));

@@ -30,7 +30,8 @@ function checkHardStops(invoice, rules) {
         return { triggered: true, rule: "GLOBAL-RECEIPT", reason: `Receipt required for expenses over $${receiptThreshold}.` };
     }
 
-    if (hasRule('GLOBAL-FRAUD') || invoice.fraudSignal === true) {
+    const scenario = String(invoice.scenario || '').toLowerCase();
+    if (invoice.fraudSignal === true || scenario.includes('fraud-pattern')) {
         return { triggered: true, rule: "GLOBAL-FRAUD", reason: "Fraud signal detected on invoice execution path." };
     }
 
@@ -38,12 +39,12 @@ function checkHardStops(invoice, rules) {
         return { triggered: true, rule: "MEAL-01", reason: "Required business meal item context is missing." };
     }
 
-    if (invoice.lineItems && invoice.lineItems.length > 0) {
+    if (hasRule('GLOBAL-MATH') && invoice.lineItems && invoice.lineItems.length > 0) {
         const lineTotal = invoice.lineItems.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
         const tax = parseFloat(invoice.taxAmount || 0);
         const expectedTotal = lineTotal + tax;
-
-        if (Math.abs(expectedTotal - amount) > 0.01 || hasRule('GLOBAL-MATH')) {
+        const diff = Math.abs(expectedTotal - amount);
+        if (diff > 0.01) {
             return {
                 triggered: true,
                 rule: "GLOBAL-MATH",

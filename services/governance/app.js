@@ -1,3 +1,6 @@
+//require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+//require('dotenv').config({});
+console.log("APP loaded", process.env.MONGO_DB, "with AI model:", process.env.AI_MODEL_NAME);
 const express = require('express');
 const { DaprServer, DaprClient } = require('@dapr/dapr');
 const { classifyInvoiceWithLocalAI } = require('./resources/ai');
@@ -60,6 +63,7 @@ async function start() {
                         const activeRules = await getPolicies();
                         // 1. Check hard stop rules
                         const hardStop = checkHardStops(invoice, activeRules);
+                        console.log("hardStop", hardStop);
                         if (hardStop.triggered) {
                             logCompliance("WARN", trackingId, correlationId, `Hard stop [${hardStop.rule}]: ${hardStop.reason}`);
 
@@ -103,7 +107,7 @@ async function start() {
                             reason: finalResult.reason,
                             triggered_rules: finalResult.triggered_rules || []
                         };
-                        console.log("save.invoice", invoice);
+
                         // Persist the final invoice status in MongoDB
                         await saveInvoiceToMongo(invoice);
                         // Publish final verdict to notification channel
@@ -114,8 +118,7 @@ async function start() {
                             try {
                                 if (!invoice.payment_requested) {
                                     invoice.payment_requested = true;
-                                    // persist the payment request flag
-                                    //TODO? await saveInvoiceToMongo(invoice);
+                                    // persist the payment request flag                                   
                                     await daprClient.pubsub.publish(PUB_SUB_NAME, 'payment.requested', invoice);
                                     console.log(`[${trackingId}] Published payment.requested for ${trackingId}`);
                                 } else {
