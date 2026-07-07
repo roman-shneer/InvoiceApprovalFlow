@@ -2,6 +2,8 @@ db = db.getSiblingDB('approvalflow');
 
 print("🌱 Starting MongoDB Collections and Core Tables schema initialization...");
 
+db.invoices.drop();
+
 db.policies.drop();
 db.policies.insertMany([
     {
