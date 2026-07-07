@@ -1,27 +1,41 @@
 const request = require('supertest');
 
-const mockStateGet = jest.fn();
-const mockStateSave = jest.fn();
-const mockPubSubPublish = jest.fn();
+// 1. Define global mock hooks registers
+const mockStateGet = jest.fn().mockResolvedValue({});
+const mockStateSave = jest.fn().mockResolvedValue(true);
+const mockPubSubPublish = jest.fn().mockResolvedValue(true);
+const mockStateQuery = jest.fn().mockResolvedValue({ results: [] });
+const mockStateDelete = jest.fn().mockResolvedValue(true);
 
+// 2. Intercept @dapr/dapr module resolution path before app components require instructions
 jest.mock('@dapr/dapr', () => {
     return {
         DaprClient: jest.fn().mockImplementation(() => {
             return {
                 state: {
-                    get: mockStateGet.mockResolvedValue([]),
-                    save: mockStateSave.mockResolvedValue(true),
-                    query: jest.fn().mockResolvedValue({ results: [] }),
-                    delete: jest.fn().mockResolvedValue(true)
+                    get: mockStateGet,
+                    save: mockStateSave,
+                    query: mockStateQuery,
+                    delete: mockStateDelete
                 },
                 pubsub: {
-                    publish: mockPubSubPublish.mockResolvedValue(true),
+                    publish: mockPubSubPublish,
                 },
             };
         }),
+        DaprServer: jest.fn().mockImplementation(() => {
+            return {
+                pubsub: {
+                    subscribe: jest.fn().mockResolvedValue(true)
+                },
+                start: jest.fn().mockResolvedValue(true)
+            };
+        }),
+        __esModule: true
     };
 });
 
+// 3. Securely import the real application router stack layers boundaries
 const appModule = require('../services/ingestion/app.js');
 const app = appModule.app || appModule;
 
@@ -32,7 +46,10 @@ describe('Distributed Multi-Service Live End-to-End Journey Harness', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        mockStateGet.mockResolvedValue([]);
+        mockStateGet.mockResolvedValue({});
+        mockStateQuery.mockResolvedValue({ results: [] });
+        mockStateSave.mockResolvedValue(true);
+        mockPubSubPublish.mockResolvedValue(true);
     });
 
     test('Journey INV-1001: Gateway Ingestion Route Acceptance with W3C Trace Context Propagation', async () => {
@@ -50,8 +67,6 @@ describe('Distributed Multi-Service Live End-to-End Journey Harness', () => {
             if (key === 'outbox_registry') return Promise.resolve([]);
             return Promise.resolve({});
         });
-        mockStateSave.mockResolvedValue(true);
-        mockPubSubPublish.mockResolvedValue(true);
 
         const response = await request(app)
             .post('/api/v1/expenses')
