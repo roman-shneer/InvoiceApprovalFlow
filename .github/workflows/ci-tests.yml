@@ -65,5 +65,6 @@ jobs:
       run: |
         echo "🚀 Starting CD Deployment Stage Pipeline Automation..."
         echo "Compiling and validating Dockerfile layers blueprints..."
-        docker build -f services/ingestion/Dockerfile --target=production -t approvalflow/ingestion:latest . --output type=cacheonly
+        docker build -f services/ingestion/Dockerfile -t approvalflow/ingestion:latest . --output type=cacheonly
         echo "🎉 CD simulation success! Ready for container registry propagation."
+
