@@ -95,7 +95,7 @@ describe('Payment Service Tests', () => {
                 value: expect.objectContaining({
                     payment: expect.objectContaining({
                         status: 'CONFIRMED',
-                        amount: '42.50'
+                        amount: 42.5
                     })
                 })
             })
