@@ -58,6 +58,8 @@ CRITICAL INSTRUCTIONS:
 - If an invoice amount is even $1 higher than a threshold specified in a rule, it is an AUTOMATIC VIOLATION.
 - DO NOT apply "safe assumptions" based on the vendor name (like DataDog) or receipt presence if a numeric limit is breached.
 - If ANY rule is violated, you MUST strictly recommend "HUMAN_REVIEW". "AUTO_APPROVE" is ONLY allowed if there are absolutely zero rule mismatches.
+- GLOBAL-RECEIPT LOGIC EXCLUSION: The "GLOBAL-RECEIPT" rule states that a receipt is required for expenses over $25. If the invoice "Total" is higher than $25, but "Receipt Present" is explicitly equal to "Yes" or true, this is a PERFECT COMPLIANCE MATCH. It is NOT a violation. You MUST recommend "AUTO_APPROVE" if no other rules are broken.
+
 
 The JSON object MUST follow this exact schema:
 {

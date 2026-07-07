@@ -36,7 +36,8 @@ function checkHardStops(invoice, rules) {
     }
 
     // 3. GLOBAL-RECEIPT Policy Enforcement Check
-    if (!receiptPresent && (amount > receiptThreshold || hasRule('GLOBAL-RECEIPT'))) {
+    if (hasRule('GLOBAL-RECEIPT') && receiptPresent == false && (amount > receiptThreshold)) {
+        console.log(`GLOBAL_RECEIPT triggered: receiptPresent=${receiptPresent}, amount=${amount}, receiptThreshold=${receiptThreshold}`);
         triggeredRules.push("GLOBAL-RECEIPT");
         reasons.push(`Receipt required for expenses over $${receiptThreshold}.`);
     }
