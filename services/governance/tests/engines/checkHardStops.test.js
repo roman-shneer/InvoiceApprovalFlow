@@ -14,7 +14,7 @@ describe('checkHardStops Policy Compliance', () => {
             const invoice = { vendorKnown: true, fraudSignal: true };
             const result = checkHardStops(invoice, []);
             expect(result.triggered).toBe(true);
-            expect(result.rule).toBe('GLOBAL-FRAUD');
+            expect(result.rules).toContain('GLOBAL-FRAUD');
         });
 
         test('triggers MEAL-01 when required compliance info is absent', () => {
@@ -22,7 +22,7 @@ describe('checkHardStops Policy Compliance', () => {
             const rules = [{ rule_id: 'MEAL-01' }];
             const result = checkHardStops(invoice, rules);
             expect(result.triggered).toBe(true);
-            expect(result.rule).toBe('MEAL-01');
+            expect(result.rules).toContain('MEAL-01');
         });
 
         test('does not trigger GLOBAL-VENDOR for known vendor when GLOBAL-VENDOR policy is active', () => {
@@ -46,7 +46,7 @@ describe('checkHardStops Policy Compliance', () => {
 
             expect(result).toEqual({
                 triggered: true,
-                rule: 'GLOBAL-FX',
+                rules: ['GLOBAL-FX'],
                 reason: expect.stringContaining('FX hard stop')
             });
         });
@@ -58,7 +58,7 @@ describe('checkHardStops Policy Compliance', () => {
             const invoice = { vendorKnown: true, currency: 'EUR', total: 600 };
             const result = checkHardStops(invoice, rules);
             expect(result.triggered).toBe(true);
-            expect(result.rule).toBe('GLOBAL-FX');
+            expect(result.rules).toContain('GLOBAL-FX');
         });
 
         test('applies custom receipt floor limit via policy values configuration', () => {
@@ -66,7 +66,7 @@ describe('checkHardStops Policy Compliance', () => {
             const invoice = { vendorKnown: true, amount: 15, receiptPresent: false };
             const result = checkHardStops(invoice, rules);
             expect(result.triggered).toBe(true);
-            expect(result.rule).toBe('GLOBAL-RECEIPT');
+            expect(result.rules).toContain('GLOBAL-RECEIPT');
         });
     });
 });
