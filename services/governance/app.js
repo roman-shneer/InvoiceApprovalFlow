@@ -1,3 +1,6 @@
+//require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+//require('dotenv').config({});
+console.log("APP loaded", process.env.MONGO_DB, "with AI model:", process.env.AI_MODEL_NAME);
 const express = require('express');
 const { DaprServer, DaprClient } = require('@dapr/dapr');
 const { classifyInvoiceWithLocalAI } = require('./resources/ai');
@@ -30,92 +33,96 @@ const server = new DaprServer({
 });
 
 async function start() {
-
-
     await server.pubsub.subscribe(
         "approval-pubsub",
         "invoice.submitted",
         async (eventData) => {
             try {
-
-                // Extract raw invoice payload from Dapr CloudEvent envelope
                 const invoice = eventData && eventData.data ? eventData.data : eventData;
                 const trackingId = invoice.tracking_id || invoice.id || "unknown";
 
                 console.log(`[${trackingId}] Incoming invoice received via Pub/Sub`);
-                // Phase 1: persist invoice in Mongo with PENDING status
+
                 invoice.status = 'PENDING';
                 await saveInvoiceToMongo(invoice);
-
-                // Immediately emit initial processing notification
                 await publishInvoiceProcessedNotification(invoice, 'PENDING', false, 'Invoice received and pending processing');
 
-                // Phase 2: move heavy business and AI logic off the main path
-                // setImmediate is safer than nextTick for event-loop scheduling here
                 setImmediate(async () => {
                     const correlationId = invoice.correlation_id || "unknown";
-                    const total = parseFloat(invoice.total || 0);
+
+                    // Initialize empty buckets to accumulate ALL audit findings across the matrix boundaries
+                    let allTriggeredRules = [];
+                    let allReasons = [];
+                    let forceHumanReview = false;
 
                     try {
                         const activeRules = await getPolicies();
-                        // 1. Check hard stop rules
+
+                        // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)
                         const hardStop = checkHardStops(invoice, activeRules);
+                        console.log("hardStop Evaluation:", hardStop);
+
                         if (hardStop.triggered) {
-                            logCompliance("WARN", trackingId, correlationId, `Hard stop [${hardStop.rule}]: ${hardStop.reason}`);
-
-                            invoice.status = 'HUMAN_REVIEW';
-                            invoice.audit_metadata = {
-                                checked_at: new Date().toISOString(),
-                                reason: hardStop.reason,
-                                triggered_rules: [hardStop.rule]
-                            };
-
-                            await saveInvoiceToMongo(invoice); // Persist updated invoice status to Mongo                           
-                            await publishInvoiceProcessedNotification(invoice, 'HUMAN_REVIEW', false);
-                            return;
-                        }
-
-                        // 2. AI classification step
-                        let aiResult = evaluateInvoiceWithAI(invoice, activeRules);
-                        if (aiResult.recommendation == 'AUTO_APPROVE') {
-                            try {
-                                aiResult = await classifyInvoiceWithLocalAI(invoice, activeRules);
-                            } catch (err) {
-                                logCompliance("ERROR", trackingId, correlationId, `AI failed: ${err.message}. Running fallback rule engine.`);
+                            forceHumanReview = true;
+                            // Support both multi-rule array returns or legacy single rule objects fallbacks
+                            if (hardStop.rules && Array.isArray(hardStop.rules)) {
+                                allTriggeredRules = [...allTriggeredRules, ...hardStop.rules];
+                            } else if (hardStop.rule) {
+                                allTriggeredRules.push(hardStop.rule);
                             }
+                            allReasons.push(hardStop.reason);
+                            logCompliance("WARN", trackingId, correlationId, `Deterministic stop triggered: ${hardStop.reason}`);
                         }
 
-                        // 3. Apply autonomy override / threshold logic
+                        // 2. Local AI Inference and Rule Engine Fallback Classification
+                        let aiResult;
+                        try {
+                            aiResult = await classifyInvoiceWithLocalAI(invoice, activeRules);
+                        } catch (err) {
+                            aiResult = evaluateInvoiceWithAI(invoice, activeRules);
+                            logCompliance("ERROR", trackingId, correlationId, `AI failure context: ${err.message}. Triggered static heuristics.`);
+                        }
+
+                        // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
                         const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules);
-                        const finalStatus = finalResult.recommendation === 'AUTO_APPROVE' ? 'AUTO_APPROVE' : 'HUMAN_REVIEW';
-                        const aiApproved = finalResult.recommendation === 'AUTO_APPROVE';
+
+                        if (finalResult.recommendation === 'HUMAN_REVIEW') {
+                            forceHumanReview = true;
+                        }
+
+                        if (finalResult.triggered_rules && Array.isArray(finalResult.triggered_rules)) {
+                            allTriggeredRules = [...allTriggeredRules, ...finalResult.triggered_rules];
+                        }
+                        allReasons.push(finalResult.reason);
+
+                        // 4. Deduplicate rules array and compile formatted clear audit text records string
+                        const uniqueTriggeredRules = [...new Set(allTriggeredRules)];
+                        const cleanFinalReason = allReasons.filter(Boolean).join(" | ");
+                        const finalStatus = forceHumanReview ? 'HUMAN_REVIEW' : 'AUTO_APPROVE';
+                        const aiApproved = finalStatus === 'AUTO_APPROVE';
 
                         logCompliance(
                             aiApproved ? "INFO" : "WARN",
                             trackingId, correlationId,
-                            `Decision: ${finalResult.recommendation}. ${finalResult.reason}`
+                            `Final Combined Verdict: ${finalStatus}. Reasons: ${cleanFinalReason}`
                         );
 
-                        // 4. Final sync of invoice state
+                        // 5. Atomic state synchronization layer execution
                         invoice.status = finalStatus;
                         invoice.audit_metadata = {
                             checked_at: new Date().toISOString(),
-                            reason: finalResult.reason,
-                            triggered_rules: finalResult.triggered_rules || []
+                            reason: cleanFinalReason,
+                            triggered_rules: uniqueTriggeredRules
                         };
-                        console.log("save.invoice", invoice);
-                        // Persist the final invoice status in MongoDB
+
                         await saveInvoiceToMongo(invoice);
-                        // Publish final verdict to notification channel
                         await publishInvoiceProcessedNotification(invoice, finalStatus, aiApproved);
 
-                        // If the system auto-approved, request payment (idempotent guard)
+                        // 6. Payment initiation routing boundary logic
                         if (aiApproved) {
                             try {
                                 if (!invoice.payment_requested) {
                                     invoice.payment_requested = true;
-                                    // persist the payment request flag
-                                    //TODO? await saveInvoiceToMongo(invoice);
                                     await daprClient.pubsub.publish(PUB_SUB_NAME, 'payment.requested', invoice);
                                     console.log(`[${trackingId}] Published payment.requested for ${trackingId}`);
                                 } else {
@@ -131,12 +138,10 @@ async function start() {
                     }
                 });
 
-                // Return success for Dapr Pub/Sub subscription acknowledgement
                 return "SUCCESS";
 
             } catch (err) {
                 console.error("!!! ERROR IN INVOICE PROCESSING STREAM !!!", err.message);
-                // On first-phase failure, return RETRY so Dapr can redeliver later
                 return "RETRY";
             }
         }
@@ -150,6 +155,8 @@ async function start() {
     }
     console.log(`🚀 Node.js Governance Agent successfully started on port ${appPort}`);
 }
+
+
 
 async function publishInvoiceProcessedNotification(pendingInvoice, finalStatus, aiApproved, reason = null) {
     if (!pendingInvoice) return;

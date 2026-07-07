@@ -17,6 +17,23 @@ describe('checkHardStops Policy Compliance', () => {
             expect(result.rules).toContain('GLOBAL-FRAUD');
         });
 
+        test('does not trigger GLOBAL-FRAUD only because policy is active without fraud indicators', () => {
+            const invoice = {
+                vendorKnown: true,
+                vendor: 'Acme Corp',
+                currency: 'USD',
+                total: 40,
+                receiptPresent: true,
+                lineItems: [{ quantity: 1, unitPrice: 40 }],
+                taxAmount: 0
+            };
+            const rules = [{ rule_id: 'GLOBAL-FRAUD' }];
+
+            const result = checkHardStops(invoice, rules);
+
+            expect(result).toEqual({ triggered: false });
+        });
+
         test('triggers MEAL-01 when required compliance info is absent', () => {
             const invoice = { vendorKnown: true, missingMealInfo: true };
             const rules = [{ rule_id: 'MEAL-01' }];
@@ -68,6 +85,7 @@ describe('checkHardStops Policy Compliance', () => {
             expect(result.triggered).toBe(true);
             expect(result.rules).toContain('GLOBAL-RECEIPT');
         });
+
     });
 });
 
