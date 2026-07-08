@@ -158,7 +158,9 @@ app.post('/api/v1/expenses', async (req, res) => {
             invoiceNumber: invoiceNumber,
             currency: body.currency || 'USD',
             category: category,
+            attendees: body.attendees || 1,
             lineItems: body.lineItems || [],
+
             taxAmount: parseFloat(body.taxAmount || 0.0),
             total: parseFloat(total),
             receiptPresent: Boolean(body.receiptPresent ?? true),
