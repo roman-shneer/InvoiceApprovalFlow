@@ -79,7 +79,7 @@ describe('Ingestion Service API Tests', () => {
         expect(response.body).toEqual({
             tracking_id: "INV-1016",
             status: "ACCEPTED",
-            message: "Invoice submitted successfully and queued for processing."
+            message: "Invoice submitted successfully and queued for processing.[INV-1016]"
         });
 
         expect(mockStateGet).toHaveBeenCalledWith('approval-state', expect.any(String));
