@@ -1,5 +1,12 @@
 const InvoicesRepository = require('../../backend/resources/invoices.repository');
 
+function generateMockToken() {
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString('base64');
+    const futureExp = Math.floor(Date.now() / 1000) + 86400;
+    const payload = Buffer.from(JSON.stringify({ role: 'submitter', exp: futureExp })).toString('base64');
+    return `${header}.${payload}.mock_signature`;
+}
+
 describe('InvoicesRepository', () => {
     beforeEach(() => {
         jest.restoreAllMocks();
@@ -13,13 +20,18 @@ describe('InvoicesRepository', () => {
             .mockResolvedValueOnce({ ok: false, json: async () => ({ id: 'invoice-2' }) });
 
         const repository = new InvoicesRepository({ state: { query: jest.fn(), get: jest.fn(), save: jest.fn() }, pubsub: { publish: jest.fn() } });
+        const mockToken = generateMockToken();
 
-        await expect(repository.sendInvoices([{ id: 'invoice-1' }, { id: 'invoice-2' }])).resolves.toEqual([
+        await expect(repository.sendInvoices([{ id: 'invoice-1' }, { id: 'invoice-2' }], mockToken)).resolves.toEqual([
             { id: 'invoice-1' }
         ]);
+
         expect(global.fetch).toHaveBeenCalledWith('http://invoice.example.test', expect.objectContaining({
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${mockToken}`
+            }
         }));
     });
 
