@@ -11,9 +11,11 @@ jest.mock('@dapr/dapr', () => {
                 state: {
                     get: mockStateGet,
                     save: mockStateSave,
+                    query: jest.fn().mockResolvedValue({ results: [] }),
+                    delete: jest.fn().mockResolvedValue(true)
                 },
                 pubsub: {
-                    publish: mockPubSubPublish,
+                    publish: mockPubSubPublish.mockResolvedValue(true),
                 },
             };
         }),
@@ -23,9 +25,20 @@ jest.mock('@dapr/dapr', () => {
 const appModule = require('../app.js');
 const app = appModule.app || appModule;
 
+// Helper to generate a valid, non-expired testing JWT token string to bypass security credentials filters
+function generateMockTestToken() {
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString('base64');
+    const futureExp = Math.floor(Date.now() / 1000) + 86400; // 1 day lifetime
+    const payload = Buffer.from(JSON.stringify({ role: 'submitter', exp: futureExp })).toString('base64');
+    return `${header}.${payload}.mock_signature_hash_bytes`;
+}
+
 describe('End-to-End Enterprise Journey Verification Harness', () => {
+    let mockToken;
+
     beforeEach(() => {
         jest.clearAllMocks();
+        mockToken = generateMockTestToken();
     });
 
     test('Journey INV-1001: Standard Policy-Compliant Invoice Auto-Approval Flow', async () => {
@@ -39,10 +52,14 @@ describe('End-to-End Enterprise Journey Verification Harness', () => {
             vendorKnown: true
         };
 
-        mockStateGet.mockResolvedValue({});
+        mockStateGet.mockResolvedValue(null);
         mockStateSave.mockResolvedValue(true);
 
-        const response = await request(app).post('/api/v1/expenses').send(invoice);
+        const response = await request(app)
+            .post('/api/v1/expenses')
+            .set('Authorization', `Bearer ${mockToken}`) // <-- FIX: Inject valid token to pass the authentication guard
+            .send(invoice);
+
         expect(response.status).toBe(202);
         expect(response.body.status).toBe('ACCEPTED');
     });
@@ -58,10 +75,14 @@ describe('End-to-End Enterprise Journey Verification Harness', () => {
             vendorKnown: true
         };
 
-        mockStateGet.mockResolvedValue({});
+        mockStateGet.mockResolvedValue(null);
         mockStateSave.mockResolvedValue(true);
 
-        const response = await request(app).post('/api/v1/expenses').send(invoice);
+        const response = await request(app)
+            .post('/api/v1/expenses')
+            .set('Authorization', `Bearer ${mockToken}`) // <-- FIX: Inject valid token to pass the authentication guard
+            .send(invoice);
+
         expect(response.status).toBe(202);
     });
 
@@ -76,10 +97,14 @@ describe('End-to-End Enterprise Journey Verification Harness', () => {
             vendorKnown: true
         };
 
-        mockStateGet.mockResolvedValue({});
+        mockStateGet.mockResolvedValue(null);
         mockStateSave.mockResolvedValue(true);
 
-        const response = await request(app).post('/api/v1/expenses').send(invoice);
+        const response = await request(app)
+            .post('/api/v1/expenses')
+            .set('Authorization', `Bearer ${mockToken}`) // <-- FIX: Inject valid token to pass the authentication guard
+            .send(invoice);
+
         expect(response.status).toBe(202);
     });
 
@@ -94,10 +119,14 @@ describe('End-to-End Enterprise Journey Verification Harness', () => {
             vendorKnown: false
         };
 
-        mockStateGet.mockResolvedValue({});
+        mockStateGet.mockResolvedValue(null);
         mockStateSave.mockResolvedValue(true);
 
-        const response = await request(app).post('/api/v1/expenses').send(invoice);
+        const response = await request(app)
+            .post('/api/v1/expenses')
+            .set('Authorization', `Bearer ${mockToken}`) // <-- FIX: Inject valid token to pass the authentication guard
+            .send(invoice);
+
         expect(response.status).toBe(202);
     });
 });
