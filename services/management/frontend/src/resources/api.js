@@ -244,6 +244,10 @@ class Api {
         return await this.sendWsRequest('delete-budget', { department });
     }
 
+    async GetStatistics() {
+        return await this.sendWsRequest('get-statistics');
+    }
+
     async GetUsers() {
         return await this.sendWsRequest('get-users');
     }
