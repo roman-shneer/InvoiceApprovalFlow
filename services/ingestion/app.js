@@ -201,7 +201,7 @@ app.post('/api/v1/expenses', async (req, res) => {
         return res.status(202).json({
             tracking_id: trackingId,
             status: 'ACCEPTED',
-            message: 'Invoice submitted successfully and queued for processing.'
+            message: `Invoice submitted successfully and queued for processing.[${trackingId}]`
         });
 
     } catch (error) {
