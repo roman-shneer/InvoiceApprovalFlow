@@ -4,6 +4,8 @@ const APP_PORT = process.env.APP_PORT || '8010';
 const DAPR_HOST = process.env.DAPR_HTTP_HOST || '127.0.0.1';
 const DAPR_PORT = process.env.DAPR_HTTP_PORT || '3500';
 const PUB_SUB = 'approval-pubsub';
+const BUDGET_STORE = 'mongo-budgets';
+const DEFAULT_BUDGET_AMOUNT = 5000;
 
 const daprClient = new DaprClient({ daprHost: DAPR_HOST, daprPort: DAPR_PORT });
 
@@ -15,12 +17,6 @@ const server = new DaprServer({
         daprPort: DAPR_PORT
     }
 });
-
-const DEPARTMENT_BUDGET_REGISTRY = {
-    "marketing-2026Q2": 1000.00,
-    "engineering-2026Q2": 50000.0,
-    "sales-2026Q2": 20000.0
-};
 
 async function resolveFxRateToUSD(currencyCode) {
     const normalized = String(currencyCode || 'USD').toUpperCase();
@@ -41,6 +37,64 @@ async function resolveFxRateToUSD(currencyCode) {
 
     // Fallback for operational continuity when FX document is missing or malformed.
     return 1;
+}
+
+function parseBudgetAmount(rawBudget) {
+    const parsed = parseFloat(rawBudget);
+    if (Number.isNaN(parsed) || parsed < 0) {
+        return null;
+    }
+    return parsed;
+}
+
+async function resolveDepartmentBudget(departmentId) {
+    const raw = await daprClient.state.get(BUDGET_STORE, departmentId);
+    const budgetDoc = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : null;
+    const amount = parseBudgetAmount(budgetDoc?.value?.amount ?? budgetDoc?.amount);
+
+    if (amount === null) {
+        return {
+            amount: DEFAULT_BUDGET_AMOUNT,
+            budgetDoc: {
+                _id: departmentId,
+                _key: departmentId,
+                value: { department: departmentId, amount: DEFAULT_BUDGET_AMOUNT },
+                _etag: budgetDoc?._etag || null,
+                _ttl: budgetDoc?._ttl ?? null
+            }
+        };
+    }
+
+    return {
+        amount,
+        budgetDoc: {
+            _id: budgetDoc?._id || departmentId,
+            _key: budgetDoc?._key || departmentId,
+            value: {
+                department: budgetDoc?.value?.department || departmentId,
+                amount
+            },
+            _etag: budgetDoc?._etag || null,
+            _ttl: budgetDoc?._ttl ?? null
+        }
+    };
+}
+
+async function persistDepartmentBudget(departmentId, amount, existingDoc) {
+    const nextAmount = parseFloat(amount);
+    const record = {
+        _id: departmentId,
+        _key: departmentId,
+        value: {
+            department: departmentId,
+            amount: nextAmount
+        },
+        _etag: existingDoc?._etag || null,
+        _ttl: existingDoc?._ttl ?? null
+    };
+
+    await daprClient.state.save(BUDGET_STORE, [{ key: departmentId, value: record }]);
+    return record;
 }
 
 async function start() {
@@ -91,11 +145,15 @@ async function start() {
                 console.log(`[Payment FX] Evaluated ${originalAmount} ${currency} as $${amountInUSD} USD against department allocation boundaries (rate=${fxRateToUSD}).`);
             }
 
-            if (DEPARTMENT_BUDGET_REGISTRY[departmentId] === undefined) {
-                DEPARTMENT_BUDGET_REGISTRY[departmentId] = 5000.00;
+            let budgetSnapshot;
+            try {
+                budgetSnapshot = await resolveDepartmentBudget(departmentId);
+            } catch (err) {
+                console.error(`[${trackingId}] Failed to load budget for [${departmentId}]:`, err.message);
+                return 'RETRY';
             }
 
-            const currentRemainingBudget = DEPARTMENT_BUDGET_REGISTRY[departmentId];
+            const currentRemainingBudget = budgetSnapshot.amount;
 
             if (currentRemainingBudget - amountInUSD < 0) {
                 console.error(`[${trackingId}] Saga Terminated: Insufficient Budget Pool. Remaining: $${currentRemainingBudget}, Required in USD: $${amountInUSD}`);
@@ -158,8 +216,15 @@ async function start() {
                 return 'SUCCESS';
             }
 
-            DEPARTMENT_BUDGET_REGISTRY[departmentId] -= amountInUSD;
-            console.log(`[${trackingId}] Budget pool allocated successfully for [${departmentId}]. Remaining balance left: $${DEPARTMENT_BUDGET_REGISTRY[departmentId]}`);
+            const nextRemainingBudget = currentRemainingBudget - amountInUSD;
+            try {
+                await persistDepartmentBudget(departmentId, nextRemainingBudget, budgetSnapshot.budgetDoc);
+            } catch (err) {
+                console.error(`[${trackingId}] Failed to persist budget deduction for [${departmentId}]:`, err.message);
+                return 'RETRY';
+            }
+
+            console.log(`[${trackingId}] Budget pool allocated successfully for [${departmentId}]. Remaining balance left: $${nextRemainingBudget}`);
 
             const paymentRecord = {
                 tracking_id: trackingId,
