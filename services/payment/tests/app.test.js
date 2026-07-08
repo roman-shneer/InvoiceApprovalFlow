@@ -62,7 +62,12 @@ describe('Payment Service Tests', () => {
             currency: 'USD'
         };
 
-        mockStateGet.mockResolvedValue(JSON.stringify(storedInvoice));
+        mockStateGet.mockImplementation(async (store, key) => {
+            if (store === 'mongo-invoices' && key === 'INV-3001') {
+                return JSON.stringify(storedInvoice);
+            }
+            return null;
+        });
         mockStateSave.mockResolvedValue(true);
         mockPubSubPublish.mockResolvedValue(true);
 
@@ -106,6 +111,52 @@ describe('Payment Service Tests', () => {
             'payment.confirmed',
             { tracking_id: 'INV-3001' }
         );
+    });
+
+    test('uses mongo-fx-rates for EUR to USD conversion when checking budget pool', async () => {
+        const storedInvoice = {
+            tracking_id: 'INV-3003',
+            status: 'AUTO_APPROVE',
+            total: '100.00',
+            currency: 'EUR'
+        };
+
+        mockStateGet.mockImplementation(async (store, key) => {
+            if (store === 'mongo-fx-rates' && key === 'EUR') {
+                return JSON.stringify({ _id: 'EUR', value: { rate: 1.2 } });
+            }
+            if (store === 'mongo-invoices' && key === 'INV-3003') {
+                return JSON.stringify(storedInvoice);
+            }
+            return null;
+        });
+        mockStateSave.mockResolvedValue(true);
+        mockPubSubPublish.mockResolvedValue(true);
+
+        const result = await appCallback({
+            data: {
+                tracking_id: 'INV-3003',
+                status: 'AUTO_APPROVE',
+                total: '100.00',
+                currency: 'EUR',
+                department: 'marketing-2026Q2'
+            }
+        });
+
+        expect(result).toBe('SUCCESS');
+        expect(mockStateGet).toHaveBeenCalledWith('mongo-fx-rates', 'EUR');
+        expect(mockStateSave).toHaveBeenNthCalledWith(2, 'mongo-invoices', [
+            expect.objectContaining({
+                key: 'INV-3003',
+                value: expect.objectContaining({
+                    payment: expect.objectContaining({
+                        status: 'CONFIRMED',
+                        amount: 100,
+                        currency: 'EUR'
+                    })
+                })
+            })
+        ]);
     });
 
     test('rejects non-approved payment requests without persisting state', async () => {

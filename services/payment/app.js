@@ -17,8 +17,31 @@ const server = new DaprServer({
 });
 
 const DEPARTMENT_BUDGET_REGISTRY = {
-    "marketing-2026Q2": 1000.00
+    "marketing-2026Q2": 1000.00,
+    "engineering-2026Q2": 50000.0,
+    "sales-2026Q2": 20000.0
 };
+
+async function resolveFxRateToUSD(currencyCode) {
+    const normalized = String(currencyCode || 'USD').toUpperCase();
+    if (normalized === 'USD') {
+        return 1;
+    }
+
+    try {
+        const raw = await daprClient.state.get('mongo-fx-rates', normalized);
+        const doc = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : null;
+        const rate = parseFloat(doc?.value?.rate ?? doc?.rate);
+        if (!Number.isNaN(rate) && rate > 0) {
+            return rate;
+        }
+    } catch (err) {
+        console.warn(`[Payment FX] Failed to load FX rate for ${normalized}:`, err.message);
+    }
+
+    // Fallback for operational continuity when FX document is missing or malformed.
+    return 1;
+}
 
 async function start() {
     await server.pubsub.subscribe(PUB_SUB, 'payment.requested', async (eventData) => {
@@ -40,7 +63,7 @@ async function start() {
                 currentScenario.includes('payment-failure');
 
             if (isBankOffline) {
-                console.log(`[${trackingId}] Detected scenario trigger [${currentScenario}]. Executing Saga compensation rollback workflow.`);
+                console.log(`[${trackingId}] Detected scenario trigger [${currentScenario}] for ${trackingId}. Executing Saga compensation rollback workflow.`);
                 try {
                     let stored = await daprClient.state.get('mongo-invoices', trackingId);
                     let storedInvoice = stored ? (typeof stored === 'string' ? JSON.parse(stored) : stored) : { tracking_id: trackingId };
@@ -62,10 +85,10 @@ async function start() {
                 }
             }
 
-            let amountInUSD = originalAmount;
-            if (currency === 'EUR') {
-                amountInUSD = originalAmount * 1.10;
-                console.log(`[Payment FX] Evaluated ${originalAmount} EUR as $${amountInUSD} USD against department allocation boundaries.`);
+            const fxRateToUSD = await resolveFxRateToUSD(currency);
+            let amountInUSD = originalAmount * fxRateToUSD;
+            if (currency !== 'USD') {
+                console.log(`[Payment FX] Evaluated ${originalAmount} ${currency} as $${amountInUSD} USD against department allocation boundaries (rate=${fxRateToUSD}).`);
             }
 
             if (DEPARTMENT_BUDGET_REGISTRY[departmentId] === undefined) {
