@@ -350,7 +350,7 @@ async function start() {
                         if (user.role !== 'submitter') {
                             return sendSocketResponse(socket, requestId, null, 'Unauthorized');
                         }
-                        const result = await invoiceManager.sendInvoices(data.invoice);
+                        const result = await invoiceManager.sendInvoices(data.invoice, token);
                         if (Array.isArray(result)) {
                             result.forEach(item => broadcastToClients({ type: 'invoice-created', invoice: item }));
                         } else if (result) {

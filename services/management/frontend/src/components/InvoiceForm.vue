@@ -43,7 +43,7 @@ export default {
             let invoices=[];
             if(invoiceData.fixtures && Array.isArray(invoiceData.fixtures)){
                 invoices=invoiceData.fixtures;
-            }else if (Array.isArray(invoiceDat)){
+            }else if (Array.isArray(invoiceData)){
                 invoices=invoiceData;
             }else{
                 invoices=[invoiceData];

@@ -13,16 +13,17 @@ class InvoicesRepository {
         return { ...payload, key };
     }
 
-    async sendInvoices(invoices) {
+    async sendInvoices(invoices, token) {
         const apiURL = process.env.INVOICE_URL;
         const results = [];
+        console.log("Token in sendInvoices:", token);
         for (var invoice of invoices) {
 
             const response = await fetch(apiURL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    // 'Authorization': 'Bearer YOUR_TOKEN'
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify(invoice)
             });
@@ -32,6 +33,7 @@ class InvoicesRepository {
                 results.push(result);
             }
         }
+        console.log("Results in sendInvoices:", results);
         return results;
     }
 
