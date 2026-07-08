@@ -14,6 +14,7 @@ const props = defineProps({
     <button @click="sendInvoice">Send</button>
     <br/>
     <p v-if="feedbackMessage" :class="['feedback', feedbackType]">{{ feedbackMessage }}</p>
+    <pre>{{ feedbackMessagePermanent }}</pre>
 </template>
 <script>
 
@@ -24,6 +25,7 @@ export default {
         return {
             invoice:"",
             feedbackMessage: '',
+            feedbackMessagePermanent:'',
             feedbackType: 'info'
         }
     },
@@ -67,6 +69,7 @@ export default {
         try {
             // Actively drive the live gateway container by sending one single invoice object at a time
             const result = await this.api.SendInvoice(currentInvoice);
+            this.feedbackMessagePermanent+= `Invoice [${trackingId}] sent successfully: ${result?.results?.[0]?.message || result?.message || 'No message returned.'}\n`;
             successCount++;
 
             // Only apply the sleep delay pacing if there are remaining invoices left in the background queue
