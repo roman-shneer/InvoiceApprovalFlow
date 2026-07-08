@@ -37,7 +37,9 @@ function anonymizeInvoice(invoice) {
     if (cleanInvoice.expected) {
         delete cleanInvoice.expected;
     }
-
+    if (cleanInvoice.status) {
+        delete cleanInvoice.status;
+    }
     return cleanInvoice;
 }
 
@@ -65,28 +67,36 @@ Your task is to analyze the user's invoice payload against the active corporate 
 ACTIVE CORPORATE POLICIES:
 ${formattedRules || "No specific rules provided. Follow general financial guidelines."}
 
-CRITICAL INSTRUCTIONS:
-- Evaluate if the invoice violates any of the active policies (check amounts, category constraints, and vendor names).
-- LINE ITEM AUDIT MANDATE: You MUST closely read the "Description" field of every single row inside the "lineItems" array.
-- UNALLOWABLE EXPENSES DETECTOR: If any line item description contains explicit restricted corporate keywords like "Alcohol", "Bar tab", "Liquor", "Wine", "Beer", "Gift", "Casino", or "Luxury", this is an AUTOMATIC VIOLATION (MEAL-03) regardless of the overall category or amount. You MUST return "REJECT".
-- If no rules are violated and the metadata looks normal, recommend "AUTO_APPROVE".
-- If any corporate rule is violated, or if the data feels anomalous, recommend "HUMAN_REVIEW".
 - You MUST respond strictly in valid JSON format. Do not write any conversational intro/outro text.
+
 - You are a rigid compliance validator, NOT a decision-maker. You have ZERO authority to make assumptions, exceptions, or compromises.
+
 - If an invoice amount is even $1 higher than a threshold specified in a rule, it is an AUTOMATIC VIOLATION.
+
 - DO NOT apply "safe assumptions" based on the vendor name or receipt presence if a numeric limit is breached.
 
+
 ## GLOBAL-RECEIPT LOGIC EXCLUSION (CRITICAL):
+
 The "GLOBAL-RECEIPT" rule states that a receipt is required for expenses over $25. 
+
 If the invoice "total" is higher than $25, but "receiptPresent" is explicitly equal to true (or "Yes"), this is a PERFECT COMPLIANCE MATCH. It is NOT a violation. 
+
 In this exact scenario, do NOT trigger any violations, and recommend "AUTO_APPROVE" (assuming no other rules are broken). Keep math accurate: $42 is LESS than $75, so MEAL-01 is compliant.
 
+
 The JSON object MUST follow this exact schema:
+
 {
+
   "recommendation": "AUTO_APPROVE" | "HUMAN_REVIEW" | "REJECT",
+
   "confidence": 0.95,
+
   "reason": "Clear English explanation mentioning which specific rule ID was evaluated or violated.",
+
   "triggered_rules": ["RULE_ID_1", "RULE_ID_2"]
+
 }`;
     //notes, scenario,expected
 
