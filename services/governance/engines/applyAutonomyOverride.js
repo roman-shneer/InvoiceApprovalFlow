@@ -9,11 +9,32 @@ function applyAutonomyOverride(aiResult, invoice, rules) {
 
     const confidence = parseFloat(aiResult.confidence || invoice.confidence || 0);
 
+    const extractNumericThreshold = (rule, fallback) => {
+        if (!rule) return fallback;
+
+        const candidates = [
+            rule.rule_text,
+            rule.value?.rule_text,
+            rule.value?.value,
+            rule.value?.threshold,
+            rule.value,
+            rule.threshold
+        ];
+
+        for (const candidate of candidates) {
+            if (candidate === undefined || candidate === null) continue;
+            const parsed = parseFloat(candidate);
+            if (!Number.isNaN(parsed)) return parsed;
+        }
+
+        return fallback;
+    };
+
     const ceilingRule = activeRules.find(r => r.rule_id === 'AUTONOMY-CEILING' || r.key === 'AUTONOMY-CEILING' || (r.value && r.value.rule_id === 'AUTONOMY-CEILING'));
-    const ceilingThreshold = ceilingRule ? parseFloat(ceilingRule.value?.value ?? ceilingRule.value?.threshold ?? ceilingRule.value ?? ceilingRule.threshold ?? 250) : 250;
+    const ceilingThreshold = extractNumericThreshold(ceilingRule, 250);
 
     const confidenceRule = activeRules.find(r => r.rule_id === 'AUTONOMY-CONFIDENCE' || r.key === 'AUTONOMY-CONFIDENCE' || (r.value && r.value.rule_id === 'AUTONOMY-CONFIDENCE'));
-    const confidenceThreshold = confidenceRule ? parseFloat(confidenceRule.value?.value ?? confidenceRule.value?.threshold ?? confidenceRule.value ?? confidenceRule.threshold ?? 0.80) : 0.80;
+    const confidenceThreshold = extractNumericThreshold(confidenceRule, 0.80);
 
     if (amount > ceilingThreshold) {
         return {

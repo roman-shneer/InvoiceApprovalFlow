@@ -78,6 +78,18 @@ describe('checkHardStops Policy Compliance', () => {
             expect(result.rules).toContain('GLOBAL-FX');
         });
 
+        test('uses fxRates conversion map for GLOBAL-FX check against USD threshold', () => {
+            const rules = [{ rule_id: 'GLOBAL-FX', threshold: 1000 }];
+            const fxRates = { USD: 1, EUR: 1.2 };
+            const invoice = { vendorKnown: true, currency: 'EUR', total: 900 };
+
+            const result = checkHardStops(invoice, rules, fxRates);
+
+            expect(result.triggered).toBe(true);
+            expect(result.rules).toContain('GLOBAL-FX');
+            expect(result.reason).toContain('~USD 1080.00');
+        });
+
         test('applies custom receipt floor limit via policy values configuration', () => {
             const rules = [{ rule_id: 'GLOBAL-RECEIPT', value: 10 }];
             const invoice = { vendorKnown: true, amount: 15, receiptPresent: false };
@@ -120,7 +132,7 @@ describe('applyAutonomyOverride Handler', () => {
                 {
                     _id: 'AUTONOMY-CEILING',
                     _key: 'AUTONOMY-CEILING',
-                    value: { rule_id: 'AUTONOMY-CEILING', value: 50 }
+                    value: { rule_id: 'AUTONOMY-CEILING', rule_text: 50 }
                 }
             ];
             const invoice = { total: 75 };
@@ -134,7 +146,7 @@ describe('applyAutonomyOverride Handler', () => {
                 {
                     _id: 'AUTONOMY-CONFIDENCE',
                     _key: 'AUTONOMY-CONFIDENCE',
-                    value: { rule_id: 'AUTONOMY-CONFIDENCE', value: 0.99 }
+                    value: { rule_id: 'AUTONOMY-CONFIDENCE', rule_text: 0.99 }
                 }
             ];
             const aiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.95 };

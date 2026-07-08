@@ -1,4 +1,4 @@
-function checkHardStops(invoice, rules) {
+function checkHardStops(invoice, rules, fxRates = {}) {
     const vendor = (invoice.vendor_id || invoice.vendor || "").toLowerCase();
     const currency = (invoice.currency || "USD").toUpperCase();
     const amount = parseFloat(invoice.amount || invoice.total || 0);
@@ -19,6 +19,23 @@ function checkHardStops(invoice, rules) {
 
     const fxThreshold = getThreshold('GLOBAL-FX', 1000);
     const receiptThreshold = getThreshold('GLOBAL-RECEIPT', 25);
+    const baseCurrency = 'USD';
+
+    const resolveFxRate = (currencyCode) => {
+        const normalizedCode = String(currencyCode || '').toUpperCase();
+        if (!normalizedCode || normalizedCode === baseCurrency) {
+            return 1;
+        }
+
+        const fromDb = parseFloat(fxRates?.[normalizedCode]);
+        if (!Number.isNaN(fromDb) && fromDb > 0) {
+            return fromDb;
+        }
+
+        return 1;
+    };
+
+    const amountInUSD = amount * resolveFxRate(currency);
 
     const triggeredRules = [];
     const reasons = [];
@@ -30,9 +47,9 @@ function checkHardStops(invoice, rules) {
     }
 
     // 2. GLOBAL-FX Policy Enforcement Check
-    if (currency !== "USD" && amount > fxThreshold) {
+    if (currency !== "USD" && amountInUSD > fxThreshold) {
         triggeredRules.push("GLOBAL-FX");
-        reasons.push(`FX hard stop: ${currency} ${amount} exceeds $${fxThreshold} foreign currency limit.`);
+        reasons.push(`FX hard stop: ${currency} ${amount} (~USD ${amountInUSD.toFixed(2)}) exceeds $${fxThreshold} foreign currency limit.`);
     }
 
     // 3. GLOBAL-RECEIPT Policy Enforcement Check

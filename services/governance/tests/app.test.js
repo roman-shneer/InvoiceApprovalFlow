@@ -29,7 +29,8 @@ jest.mock('@dapr/dapr', () => ({
 
 jest.mock('../resources/db', () => ({
     saveInvoiceToMongo: jest.fn(),
-    getPolicies: jest.fn()
+    getPolicies: jest.fn(),
+    getFxRates: jest.fn()
 }));
 
 jest.mock('../engines/checkHardStops', () => ({
@@ -88,6 +89,7 @@ describe('Governance main processing flow', () => {
         });
 
         dbMock.getPolicies.mockResolvedValue([]);
+        dbMock.getFxRates.mockResolvedValue({ USD: 1, EUR: 1.1 });
         hardStopsMock.checkHardStops.mockReturnValue({ triggered: false });
         evaluateAiMock.evaluateInvoiceWithAI.mockReturnValue({
             recommendation: 'AUTO_APPROVE',
@@ -120,7 +122,7 @@ describe('Governance main processing flow', () => {
 
         expect(savedInvoiceCalls[0]).toEqual(expect.objectContaining({ tracking_id: 'INV-2000', status: 'PENDING' }));
         expect(savedInvoiceCalls[1]).toEqual(expect.objectContaining({ tracking_id: 'INV-2000', status: 'AUTO_APPROVE' }));
-        expect(hardStopsMock.checkHardStops).toHaveBeenCalledWith(expect.objectContaining({ tracking_id: 'INV-2000' }), []);
+        expect(hardStopsMock.checkHardStops).toHaveBeenCalledWith(expect.objectContaining({ tracking_id: 'INV-2000' }), [], { USD: 1, EUR: 1.1 });
         expect(mockPubSubPublish).toHaveBeenCalledWith('approval-pubsub', 'payment.requested', expect.objectContaining({ tracking_id: 'INV-2000' }));
     });
 
@@ -139,6 +141,7 @@ describe('Governance main processing flow', () => {
         ];
 
         dbMock.getPolicies.mockResolvedValue(mockPoliciesPayload);
+        dbMock.getFxRates.mockResolvedValue({ USD: 1, EUR: 1.1 });
         hardStopsMock.checkHardStops.mockReturnValue({ triggered: false });
 
         evaluateAiMock.evaluateInvoiceWithAI.mockReturnValue({
