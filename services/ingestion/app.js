@@ -70,6 +70,22 @@ async function dispatchOutboxEvent(outboxEvent, correlationId) {
     }
 }
 
+function decodeJwtPayload(token) {
+    if (!token) return null;
+    try {
+        const parts = token.split('.');
+        if (parts.length !== 3) return null;
+
+        const base64Url = parts[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = Buffer.from(base64, 'base64').toString('utf8');
+
+        return JSON.parse(jsonPayload);
+    } catch (err) {
+        console.error('[JWT Error] Failed to decode token payload:', err.message);
+        return null;
+    }
+}
 
 logMessage('INFO', '0', 'Ingestion service bootstrap complete. Listening for incoming traffic.');
 
@@ -77,6 +93,27 @@ logMessage('INFO', '0', 'Ingestion service bootstrap complete. Listening for inc
 app.post('/api/v1/expenses', async (req, res) => {
     const correlationId = req.headers['x-correlation-id'] || `corr_${crypto.randomUUID()}`;
     logMessage('INFO', correlationId, 'Received raw invoice submission request.');
+
+    const authHeader = req.headers['authorization'];
+    let userPayload = null;
+    if (authHeader) {
+        let token = null;
+
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            token = authHeader.split(' ')[1];
+        }
+        userPayload = decodeJwtPayload(token);
+    }
+    if (!authHeader || !userPayload || userPayload.role !== 'submitter' || !userPayload.exp) {
+        logMessage('WARN', correlationId, 'Unauthorized submission attempt.');
+        return res.status(403).json({ error: 'Forbidden: Invalid or missing token.' });
+    }
+
+    const currentUnixTimestamp = Math.floor(Date.now() / 1000);
+    if (currentUnixTimestamp > userPayload.exp) {
+        logMessage('WARN', correlationId, 'Token has expired.');
+        return res.status(403).json({ error: 'Forbidden: Token has expired.' });
+    }
 
     const body = req.body;
 
