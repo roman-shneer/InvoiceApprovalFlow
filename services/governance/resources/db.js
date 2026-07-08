@@ -24,6 +24,30 @@ async function getPolicies() {
     return activeRules;
 }
 
+async function getFxRates() {
+    const response = await client.state.query("mongo-fx-rates", {
+        filter: {},
+        page: { limit: 200 }
+    });
+
+    const rates = {};
+    for (const item of response?.results || []) {
+        const doc = item.data || item.value || {};
+        const code = String(doc._id || doc._key || item.key || '').toUpperCase();
+        const rate = parseFloat(doc.value?.rate ?? doc.rate);
+
+        if (code && !Number.isNaN(rate) && rate > 0) {
+            rates[code] = rate;
+        }
+    }
+
+    if (!rates.USD) {
+        rates.USD = 1;
+    }
+
+    return rates;
+}
+
 
 async function saveInvoiceToMongo(invoice) {
 
@@ -44,4 +68,4 @@ async function saveInvoiceToMongo(invoice) {
     }
 }
 
-module.exports = { getPolicies, saveInvoiceToMongo };
+module.exports = { getPolicies, getFxRates, saveInvoiceToMongo };

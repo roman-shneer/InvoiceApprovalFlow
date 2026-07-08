@@ -8,7 +8,7 @@ const { checkHardStops } = require('./engines/checkHardStops');
 const { applyAutonomyOverride } = require('./engines/applyAutonomyOverride');
 const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
 const { logCompliance } = require('./utils/logCompliance');
-const { getPolicies, saveInvoiceToMongo } = require('./resources/db');
+const { getPolicies, getFxRates, saveInvoiceToMongo } = require('./resources/db');
 
 const appPort = "8002";
 const daprHost = "127.0.0.1";
@@ -57,9 +57,10 @@ async function start() {
 
                     try {
                         const activeRules = await getPolicies();
+                        const fxRates = await getFxRates();
 
                         // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)
-                        const hardStop = checkHardStops(invoice, activeRules);
+                        const hardStop = checkHardStops(invoice, activeRules, fxRates);
                         console.log("hardStop Evaluation:", hardStop);
 
                         if (hardStop.triggered) {
