@@ -63,6 +63,9 @@ describe('Payment Service Tests', () => {
         };
 
         mockStateGet.mockImplementation(async (store, key) => {
+            if (store === 'mongo-budgets' && key === 'default-pool') {
+                return JSON.stringify({ _id: 'default-pool', value: { department: 'default-pool', amount: 5000 } });
+            }
             if (store === 'mongo-invoices' && key === 'INV-3001') {
                 return JSON.stringify(storedInvoice);
             }
@@ -81,7 +84,7 @@ describe('Payment Service Tests', () => {
         });
 
         expect(result).toBe('SUCCESS');
-        expect(mockStateSave).toHaveBeenCalledTimes(2);
+        expect(mockStateSave).toHaveBeenCalledTimes(3);
 
         expect(mockStateSave).toHaveBeenNthCalledWith(1, 'mongo-invoices', [
             expect.objectContaining({
@@ -94,7 +97,20 @@ describe('Payment Service Tests', () => {
             })
         ]);
 
-        expect(mockStateSave).toHaveBeenNthCalledWith(2, 'mongo-invoices', [
+        expect(mockStateSave).toHaveBeenNthCalledWith(2, 'mongo-budgets', [
+            expect.objectContaining({
+                key: 'default-pool',
+                value: expect.objectContaining({
+                    _id: 'default-pool',
+                    value: expect.objectContaining({
+                        department: 'default-pool',
+                        amount: 4957.5
+                    })
+                })
+            })
+        ]);
+
+        expect(mockStateSave).toHaveBeenNthCalledWith(3, 'mongo-invoices', [
             expect.objectContaining({
                 key: 'INV-3001',
                 value: expect.objectContaining({
@@ -125,6 +141,9 @@ describe('Payment Service Tests', () => {
             if (store === 'mongo-fx-rates' && key === 'EUR') {
                 return JSON.stringify({ _id: 'EUR', value: { rate: 1.2 } });
             }
+            if (store === 'mongo-budgets' && key === 'marketing-2026Q2') {
+                return JSON.stringify({ _id: 'marketing-2026Q2', value: { department: 'marketing-2026Q2', amount: 1000 } });
+            }
             if (store === 'mongo-invoices' && key === 'INV-3003') {
                 return JSON.stringify(storedInvoice);
             }
@@ -145,7 +164,18 @@ describe('Payment Service Tests', () => {
 
         expect(result).toBe('SUCCESS');
         expect(mockStateGet).toHaveBeenCalledWith('mongo-fx-rates', 'EUR');
-        expect(mockStateSave).toHaveBeenNthCalledWith(2, 'mongo-invoices', [
+        expect(mockStateSave).toHaveBeenNthCalledWith(2, 'mongo-budgets', [
+            expect.objectContaining({
+                key: 'marketing-2026Q2',
+                value: expect.objectContaining({
+                    value: expect.objectContaining({
+                        department: 'marketing-2026Q2',
+                        amount: 880
+                    })
+                })
+            })
+        ]);
+        expect(mockStateSave).toHaveBeenNthCalledWith(3, 'mongo-invoices', [
             expect.objectContaining({
                 key: 'INV-3003',
                 value: expect.objectContaining({
@@ -172,5 +202,36 @@ describe('Payment Service Tests', () => {
         expect(result).toBe('REJECTED');
         expect(mockStateSave).not.toHaveBeenCalled();
         expect(mockPubSubPublish).not.toHaveBeenCalled();
+    });
+
+    test('fails payment when mongo budget is insufficient', async () => {
+        mockStateGet.mockImplementation(async (store, key) => {
+            if (store === 'mongo-budgets' && key === 'marketing-2026Q2') {
+                return JSON.stringify({ _id: 'marketing-2026Q2', value: { department: 'marketing-2026Q2', amount: 50 } });
+            }
+            if (store === 'mongo-invoices' && key === 'INV-3999') {
+                return JSON.stringify({ tracking_id: 'INV-3999', status: 'AUTO_APPROVE' });
+            }
+            return null;
+        });
+        mockStateSave.mockResolvedValue(true);
+        mockPubSubPublish.mockResolvedValue(true);
+
+        const result = await appCallback({
+            data: {
+                tracking_id: 'INV-3999',
+                status: 'AUTO_APPROVE',
+                total: '120.00',
+                currency: 'USD',
+                department: 'marketing-2026Q2'
+            }
+        });
+
+        expect(result).toBe('SUCCESS');
+        expect(mockPubSubPublish).toHaveBeenCalledWith(
+            'approval-pubsub',
+            'payment.failed',
+            expect.objectContaining({ tracking_id: 'INV-3999', reason: 'insufficient_budget', department: 'marketing-2026Q2' })
+        );
     });
 });
