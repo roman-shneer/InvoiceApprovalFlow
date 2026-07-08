@@ -114,19 +114,71 @@ db.policies.insertMany([
     {
         "_id": "AUTONOMY-CEILING",
         "_key": "AUTONOMY-CEILING",
-        "value": { "rule_id": "AUTONOMY-CEILING", "category": "autonomy", "value": 250, "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "AUTONOMY-CEILING", "category": "autonomy", "rule_text": 250, "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
     {
         "_id": "AUTONOMY-CONFIDENCE",
         "_key": "AUTONOMY-CONFIDENCE",
-        "value": { "rule_id": "AUTONOMY-CONFIDENCE", "category": "autonomy", "value": 0.80, "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "AUTONOMY-CONFIDENCE", "category": "autonomy", "rule_text": 0.80, "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     }
 ]);
-
 db.policies.createIndex({ "_key": 1 }, { unique: true });
+
+db.budgets.drop();
+db.budgets.insertMany([
+    {
+        "_id": "marketing-2026Q2",
+        "_key": "marketing-2026Q2",
+        "value": { "department": "marketing-2026Q2", "amount": 1000.0 },
+        "_etag": crypto.randomUUID(),
+        "_ttl": null
+    },
+    {
+        "_id": "engineering-2026Q2",
+        "_key": "engineering-2026Q2",
+        "value": { "department": "engineering-2026Q2", "amount": 50000.0 },
+        "_etag": crypto.randomUUID(),
+        "_ttl": null
+    },
+    {
+        "_id": "sales-2026Q2",
+        "_key": "sales-2026Q2",
+        "value": { "department": "sales-2026Q2", "amount": 20000.0 },
+        "_etag": crypto.randomUUID(),
+        "_ttl": null
+    },
+]);
+db.budgets.createIndex({ "_key": 1 }, { unique: true });
+
+db.fxRates.drop();
+db.fxRates.insertMany([
+    {
+        "_id": "USD",
+        "_key": "USD",
+        "value": { "rate": 1.0 },
+        "_etag": crypto.randomUUID(),
+        "_ttl": null
+    },
+    {
+        "_id": "EUR",
+        "_key": "EUR",
+        "value": { "rate": 1.08 },
+        "_etag": crypto.randomUUID(),
+        "_ttl": null
+    },
+    {
+        "_id": "GBP",
+        "_key": "GBP",
+        "value": { "rate": 1.25 },
+        "_etag": crypto.randomUUID(),
+        "_ttl": null
+    },
+
+]);
+db.fxRates.createIndex({ "_key": 1 }, { unique: true });
 
 print("🎉 MongoDB core tables seeded successfully!");
