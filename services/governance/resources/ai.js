@@ -2,6 +2,47 @@ const { Ollama } = require('ollama');
 
 const ollama = new Ollama({ host: 'http://ollama-service:11434' });
 
+
+/**
+ * Anonymizes sensitive data in an invoice object.
+ * 
+ * @param {Object} invoice - Исходный объект инвойса
+ * @returns {Object} Абсолютно новый объект с замаскированными данными
+ */
+function anonymizeInvoice(invoice) {
+    if (!invoice || typeof invoice !== 'object') return invoice;
+
+    const cleanInvoice = JSON.parse(JSON.stringify(invoice));
+
+    if (cleanInvoice.submitter && typeof cleanInvoice.submitter === 'string') {
+        cleanInvoice.submitter = cleanInvoice.submitter.replace(
+            /([^@]{1,2})[^@]*([^@]{1,2})@(.*)/,
+            (match, first, last, domain) => `${first}***${last}@${domain}`
+        );
+    }
+
+    const maskId = (id) => id ? `MASKED-${btoa(String(id)).substring(0, 8)}` : id;
+
+    if (cleanInvoice.id) cleanInvoice.id = maskId(cleanInvoice.id);
+    if (cleanInvoice.invoiceNumber) cleanInvoice.invoiceNumber = maskId(cleanInvoice.invoiceNumber);
+
+
+    if ('notes' in cleanInvoice) {
+        cleanInvoice.notes = "[REDACTED_INTERNAL_NOTES]";
+    }
+
+
+    if (cleanInvoice.scenario) {
+        cleanInvoice.scenario = "[REDACTED_SCENARIO]";
+    }
+    if (cleanInvoice.expected) {
+        cleanInvoice.expected = {};
+    }
+
+    return cleanInvoice;
+}
+
+
 /**
  * Invoice auditing using a local AI model based on live corporate rules
  * @param {Object} invoice — invoice object (total, category, vendor_id, etc.)
@@ -33,19 +74,21 @@ CRITICAL INSTRUCTIONS:
 - You are a rigid compliance validator, NOT a decision-maker. You have ZERO authority to make assumptions, exceptions, or compromises.
 - If an invoice amount is even $1 higher than a threshold specified in a rule, it is an AUTOMATIC VIOLATION.
 - DO NOT apply "safe assumptions" based on the vendor name (like DataDog) or receipt presence if a numeric limit is breached.
+- If invoice is not reimbursable, you MUST recommend "REJECT".
 - If ANY rule is violated, you MUST strictly recommend "HUMAN_REVIEW". "AUTO_APPROVE" is ONLY allowed if there are absolutely zero rule mismatches.
 - GLOBAL-RECEIPT LOGIC EXCLUSION: The "GLOBAL-RECEIPT" rule states that a receipt is required for expenses over $25. If the invoice "Total" is higher than $25, but "Receipt Present" is explicitly equal to "Yes" or true, this is a PERFECT COMPLIANCE MATCH. It is NOT a violation. You MUST recommend "AUTO_APPROVE" if no other rules are broken.
 
 
 The JSON object MUST follow this exact schema:
 {
-"recommendation": "AUTO_APPROVE" or "HUMAN_REVIEW",
+"recommendation": "AUTO_APPROVE" or "HUMAN_REVIEW" or "REJECT",
 "confidence": 0.95,
 "reason": "Clear English explanation mentioning which specific rule ID was evaluated or violated."
 "triggered_rules": ["RULE_ID_1", "RULE_ID_2"] // List of rule IDs that were violated, if any. Empty array if none.
 }`;
-
-    const userPrompt = `Analyze this invoice payload: ` + JSON.stringify(invoice);
+    //notes, scenario,expected
+    const invoiceDetails = anonymizeInvoice(invoice);
+    const userPrompt = `Analyze this invoice payload: ` + JSON.stringify(invoiceDetails, null, 2);
 
     console.log("***systemPrompt", systemPrompt);
     console.log("***userPrompt", userPrompt);

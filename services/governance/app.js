@@ -89,10 +89,6 @@ async function start() {
                         // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
                         const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules);
                         console.log("***finalResult", finalResult);
-                        if (finalResult.recommendation === 'HUMAN_REVIEW') {
-                            forceHumanReview = true;
-                        }
-
                         if (finalResult.triggered_rules && Array.isArray(finalResult.triggered_rules)) {
                             allTriggeredRules = [...allTriggeredRules, ...finalResult.triggered_rules];
                         }
@@ -100,9 +96,9 @@ async function start() {
 
                         // 4. Deduplicate rules array and compile formatted clear audit text records string
                         const uniqueTriggeredRules = [...new Set(allTriggeredRules)];
-                        console.log("***allReasons", allReasons);
+
                         const cleanFinalReason = allReasons.filter(Boolean).join(" ; ");
-                        const finalStatus = forceHumanReview ? 'HUMAN_REVIEW' : 'AUTO_APPROVE';
+                        const finalStatus = finalResult.recommendation;
                         const aiApproved = finalStatus === 'AUTO_APPROVE';
 
                         logCompliance(
