@@ -83,14 +83,14 @@ export default {
             if(!invoice || !invoice.payment || !invoice.payment.status){
                 return '';
             }
-            let status ="";
+            let status = invoice.payment.status;
             if(invoice.payment.status=="CONFIRMED"){
                 const amount = invoice.payment.amount;
                 const currency = invoice.payment.currency;  
 
-                status="✅ "+invoice.payment.status+" "+this.renderCurrency(currency)+amount;
-            }else if(invoice.payment.status=="FAILED"){
-                status="❌ "+invoice.payment.status+" "+invoice.payment?.reason;;
+                status="✅"+invoice.payment.status+" "+this.renderCurrency(currency)+amount;
+            }else if(invoice.payment.status=="FAILED" || invoice.payment.status=="REJECTED_ROLLBACK"){
+                status="❌"+invoice.payment.status+" "+(invoice.payment?.reason || '');
             }
             
             return status;
