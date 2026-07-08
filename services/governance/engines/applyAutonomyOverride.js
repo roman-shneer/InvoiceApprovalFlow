@@ -6,12 +6,10 @@ const AUTONOMY = {
 function applyAutonomyOverride(aiResult, invoice, rules) {
     const activeRules = Array.isArray(rules) ? rules : [];
     const amount = parseFloat(invoice.amount || invoice.total || 0);
-
     const confidence = parseFloat(aiResult.confidence || invoice.confidence || 0);
 
     const extractNumericThreshold = (rule, fallback) => {
         if (!rule) return fallback;
-
         const candidates = [
             rule.rule_text,
             rule.value?.rule_text,
@@ -20,13 +18,11 @@ function applyAutonomyOverride(aiResult, invoice, rules) {
             rule.value,
             rule.threshold
         ];
-
         for (const candidate of candidates) {
             if (candidate === undefined || candidate === null) continue;
             const parsed = parseFloat(candidate);
             if (!Number.isNaN(parsed)) return parsed;
         }
-
         return fallback;
     };
 
@@ -36,19 +32,31 @@ function applyAutonomyOverride(aiResult, invoice, rules) {
     const confidenceRule = activeRules.find(r => r.rule_id === 'AUTONOMY-CONFIDENCE' || r.key === 'AUTONOMY-CONFIDENCE' || (r.value && r.value.rule_id === 'AUTONOMY-CONFIDENCE'));
     const confidenceThreshold = extractNumericThreshold(confidenceRule, 0.80);
 
+    const reasons = [];
+    const triggeredRules = [];
+
     if (amount > ceilingThreshold) {
-        return {
-            recommendation: 'HUMAN_REVIEW',
-            reason: `Invoice amount $${amount} exceeds autonomy ceiling of $${ceilingThreshold}.`,
-            triggered_rules: ['AUTONOMY-CEILING']
-        };
+        reasons.push(`Invoice amount $${amount} exceeds autonomy ceiling of $${ceilingThreshold}.`);
+        triggeredRules.push('AUTONOMY-CEILING');
     }
 
     if (confidence < confidenceThreshold) {
+        reasons.push(`AI confidence level ${confidence} is below required autonomy threshold of ${confidenceThreshold}.`);
+        triggeredRules.push('AUTONOMY-CONFIDENCE');
+    }
+
+    if (aiResult.recommendation === 'HUMAN_REVIEW' && aiResult.reason) {
+        reasons.push(aiResult.reason);
+        if (Array.isArray(aiResult.triggered_rules)) {
+            triggeredRules.push(...aiResult.triggered_rules);
+        }
+    }
+
+    if (reasons.length > 0) {
         return {
             recommendation: 'HUMAN_REVIEW',
-            reason: `AI confidence level ${confidence} is below required autonomy threshold of ${confidenceThreshold}.`,
-            triggered_rules: ['AUTONOMY-CONFIDENCE']
+            reason: reasons.join('; '),
+            triggered_rules: [...new Set(triggeredRules)]
         };
     }
 

@@ -61,7 +61,7 @@ async function start() {
 
                         // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)
                         const hardStop = checkHardStops(invoice, activeRules, fxRates);
-                        console.log("hardStop Evaluation:", hardStop);
+                        console.log("****hardStop Evaluation:", trackingId, hardStop);
 
                         if (hardStop.triggered) {
                             forceHumanReview = true;
@@ -79,14 +79,16 @@ async function start() {
                         let aiResult;
                         try {
                             aiResult = await classifyInvoiceWithLocalAI(invoice, activeRules);
+                            console.log("****classifyInvoiceWithLocalAI", trackingId, aiResult);
                         } catch (err) {
                             aiResult = evaluateInvoiceWithAI(invoice, activeRules);
+                            console.log("****evaluateInvoiceWithAI", aiResult);
                             logCompliance("ERROR", trackingId, correlationId, `AI failure context: ${err.message}. Triggered static heuristics.`);
                         }
 
                         // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
                         const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules);
-
+                        console.log("***finalResult", finalResult);
                         if (finalResult.recommendation === 'HUMAN_REVIEW') {
                             forceHumanReview = true;
                         }
@@ -98,7 +100,8 @@ async function start() {
 
                         // 4. Deduplicate rules array and compile formatted clear audit text records string
                         const uniqueTriggeredRules = [...new Set(allTriggeredRules)];
-                        const cleanFinalReason = allReasons.filter(Boolean).join(" | ");
+                        console.log("***allReasons", allReasons);
+                        const cleanFinalReason = allReasons.filter(Boolean).join(" ; ");
                         const finalStatus = forceHumanReview ? 'HUMAN_REVIEW' : 'AUTO_APPROVE';
                         const aiApproved = finalStatus === 'AUTO_APPROVE';
 
