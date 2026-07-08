@@ -413,6 +413,47 @@ async function start() {
 
                         return sendSocketResponse(socket, requestId, { budgets });
                     }
+                    case 'get-statistics': {
+                        if (user.role !== 'admin') {
+                            return sendSocketResponse(socket, requestId, null, 'Unauthorized');
+                        }
+
+                        const invoices = await invoiceManager.getInvoices(null);
+                        const policies = await policiesManager.loadPolicies();
+
+                        const extractNumericPolicyValue = (ruleId, fallback) => {
+                            const policy = (policies || []).find((p) => p.rule_id === ruleId || p.key === ruleId || p.value?.rule_id === ruleId);
+                            if (!policy) {
+                                return fallback;
+                            }
+
+                            const candidates = [
+                                policy.rule_text,
+                                policy.value?.rule_text,
+                                policy.value?.value,
+                                policy.value?.threshold,
+                                policy.value,
+                                policy.threshold
+                            ];
+
+                            for (const candidate of candidates) {
+                                const parsed = parseFloat(candidate);
+                                if (!Number.isNaN(parsed)) {
+                                    return parsed;
+                                }
+                            }
+
+                            return fallback;
+                        };
+
+                        return sendSocketResponse(socket, requestId, {
+                            invoices,
+                            autonomy: {
+                                ceiling: extractNumericPolicyValue('AUTONOMY-CEILING', 250),
+                                confidence: extractNumericPolicyValue('AUTONOMY-CONFIDENCE', 0.8)
+                            }
+                        });
+                    }
                     case 'save-budget': {
                         if (user.role !== 'admin') {
                             return sendSocketResponse(socket, requestId, null, 'Unauthorized');
