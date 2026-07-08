@@ -3,7 +3,7 @@ const AUTONOMY = {
     CONFIDENCE: 0.8,
     HARDSTOPS: ["GLOBAL-VENDOR", "GLOBAL-FX", "GLOBAL-MATH", "GLOBAL-FRAUD", "GLOBAL-RECEIPT"]
 };
-function applyAutonomyOverride(aiResult, invoice, rules) {
+function applyAutonomyOverride(aiResult, invoice, rules, hardStop) {
     const activeRules = Array.isArray(rules) ? rules : [];
     const amount = parseFloat(invoice.amount || invoice.total || 0);
     const confidence = parseFloat(aiResult.confidence || invoice.confidence || 0);
@@ -49,6 +49,15 @@ function applyAutonomyOverride(aiResult, invoice, rules) {
         reasons.push(aiResult.reason);
         if (Array.isArray(aiResult.triggered_rules)) {
             triggeredRules.push(...aiResult.triggered_rules);
+        }
+    }
+
+    if (hardStop && hardStop.triggered) {
+        reasons.push(hardStop.reason);
+        if (hardStop.rules && Array.isArray(hardStop.rules)) {
+            triggeredRules.push(...hardStop.rules);
+        } else if (hardStop.rule) {
+            triggeredRules.push(hardStop.rule);
         }
     }
 
