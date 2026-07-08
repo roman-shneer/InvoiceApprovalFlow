@@ -87,7 +87,7 @@ async function start() {
                         }
 
                         // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
-                        const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules);
+                        const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules, hardStop);
                         console.log("***finalResult", finalResult);
                         if (finalResult.triggered_rules && Array.isArray(finalResult.triggered_rules)) {
                             allTriggeredRules = [...allTriggeredRules, ...finalResult.triggered_rules];

@@ -61,43 +61,33 @@ async function classifyInvoiceWithLocalAI(invoice, rules) {
         .join('\n');
 
 
-    const systemPrompt = `You are an expert corporate FinOps Compliance Auditor. 
-Your task is to analyze the user's invoice payload against the active corporate policies.
+    const systemPrompt = `You are a rigid corporate FinOps Compliance Auditor. 
+Analyze the invoice JSON and output strictly valid JSON matching the schema. No conversational text.
 
-ACTIVE CORPORATE POLICIES:
+ACTIVE POLICIES:
 ${formattedRules || "No specific rules provided. Follow general financial guidelines."}
 
-- You MUST respond strictly in valid JSON format. Do not write any conversational intro/outro text.
+CRITICAL TEXT BLACKLIST:
+Prohibited keywords: "Alcohol", "Bar tab", "Liquor", "Wine", "Beer", "Gift", "Casino", "Luxury".
 
-- You are a rigid compliance validator, NOT a decision-maker. You have ZERO authority to make assumptions, exceptions, or compromises.
+RULES FOR RECOMMENDATION (Apply strictly):
 
-- If an invoice amount is even $1 higher than a threshold specified in a rule, it is an AUTOMATIC VIOLATION.
+- IF any line item description contains a word from the CRITICAL TEXT BLACKLIST -> Return "REJECT" and ["GLOBAL-FRAUD"].
 
-- DO NOT apply "safe assumptions" based on the vendor name or receipt presence if a numeric limit is breached.
+- ELSE IF the total amount is higher than the policy limit ($200 for saas, $250 for travel) -> Return "HUMAN_REVIEW" and ["SAAS-01"] or ["TRAVEL-01"].
 
+- ELSE IF vendorKnown == false OR math fails OR receipt is missing -> Return "HUMAN_REVIEW" and the broken rule ID.
 
-## GLOBAL-RECEIPT LOGIC EXCLUSION (CRITICAL):
+- ELSE -> Return "AUTO_APPROVE" and [].
 
-The "GLOBAL-RECEIPT" rule states that a receipt is required for expenses over $25. 
-
-If the invoice "total" is higher than $25, but "receiptPresent" is explicitly equal to true (or "Yes"), this is a PERFECT COMPLIANCE MATCH. It is NOT a violation. 
-
-In this exact scenario, do NOT trigger any violations, and recommend "AUTO_APPROVE" (assuming no other rules are broken). Keep math accurate: $42 is LESS than $75, so MEAL-01 is compliant.
-
-
-The JSON object MUST follow this exact schema:
-
+OUTPUT FORMAT (Strict JSON only):
 {
-
   "recommendation": "AUTO_APPROVE" | "HUMAN_REVIEW" | "REJECT",
-
-  "confidence": 0.95,
-
-  "reason": "Clear English explanation mentioning which specific rule ID was evaluated or violated.",
-
-  "triggered_rules": ["RULE_ID_1", "RULE_ID_2"]
-
-}`;
+  "confidence": 0.99,
+  "reason": "Clear explanation of the rule status.",
+  "triggered_rules": []
+}
+`;
     //notes, scenario,expected
 
     const invoiceDetails = anonymizeInvoice(invoice);
