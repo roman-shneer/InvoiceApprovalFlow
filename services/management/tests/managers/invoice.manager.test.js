@@ -1,5 +1,21 @@
 const InvoiceManager = require('../../backend/managers/invoice.manager');
 
+function generateMockToken(role = 'submitter') {
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString('base64');
+
+    // Set expiration 1 day into the future from now to prevent triggering expiry guards
+    const futureExp = Math.floor(Date.now() / 1000) + 86400;
+
+    const payload = Buffer.from(JSON.stringify({
+        role: role,
+        exp: futureExp
+    })).toString('base64');
+
+    const mockSignature = "mock_signature_bytes_string";
+
+    return `${header}.${payload}.${mockSignature}`;
+}
+
 describe('InvoiceManager', () => {
     test('sendInvoices parses payloads and forwards them to the resource', async () => {
         const resource = {
@@ -9,19 +25,24 @@ describe('InvoiceManager', () => {
         };
         const manager = new InvoiceManager(resource);
 
-        await expect(manager.sendInvoices('{"id":"invoice-1"}')).resolves.toEqual({
+        const mockToken = generateMockToken();
+
+        await expect(manager.sendInvoices('{"id":"invoice-1"}', mockToken)).resolves.toEqual({
             success: true,
             message: 'ok',
             results: [{ id: 'invoice-1' }]
         });
-        expect(resource.sendInvoices).toHaveBeenCalledWith([{ id: 'invoice-1' }]);
+
+        // FIX: Expect array elements map and token string context as two independent arguments matches
+        expect(resource.sendInvoices).toHaveBeenCalledWith([{ id: 'invoice-1' }], mockToken);
     });
 
     test('sendInvoices returns a parse error for invalid payloads', async () => {
+        const mockToken = generateMockToken();
         const manager = new InvoiceManager({ sendInvoices: jest.fn() });
         const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
-        await expect(manager.sendInvoices('{')).resolves.toEqual({
+        await expect(manager.sendInvoices('{', mockToken)).resolves.toEqual({
             success: false,
             message: expect.stringContaining('JSON parsing error:')
         });
