@@ -69,7 +69,7 @@ export default {
                 return '';
             }
             let status ="";
-            if(invoice.status=="HUMAN_REVIEW"){
+            if(invoice.status=="HUMAN_REVIEW" || invoice.status=="DECLINE" || invoice.status=="REJECT"){
                 status="❌ "+invoice.status;
             }else if(invoice.status=="AUTO_APPROVE" || invoice.status=="APPROVED"){
                 status="✅ "+invoice.status;
@@ -195,7 +195,15 @@ export default {
             if(invoice.expected.route.toLowerCase()=='reject'){
                 return "❌REJECT";
             }
+
+            if(invoice.expected.route.toLowerCase()=='decline'){
+                return "❌DECLINE";
+            }
             
+            if(invoice.expected.route.toLowerCase()=='approved'){
+                return "APPROVED";
+            }
+
             if(invoice.expected.route.toLowerCase()=='auto_approve'){
                 return "✅AUTO_APPROVE";
             }
