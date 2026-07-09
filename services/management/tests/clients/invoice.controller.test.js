@@ -38,7 +38,7 @@ describe('InvoiceController', () => {
         const manager = {
             updateInvoiceStatus: jest.fn()
                 .mockResolvedValueOnce({ key: 'invoice-1', status: 'APPROVED' })
-                .mockResolvedValueOnce({ key: 'invoice-2', status: 'REJECTED' })
+                .mockResolvedValueOnce({ key: 'invoice-2', status: 'DECLINE' })
         };
         const websocketBroadcast = jest.fn();
         const controller = new InvoiceController(manager, websocketBroadcast);
@@ -49,8 +49,8 @@ describe('InvoiceController', () => {
         await controller.rejectInvoice({ user: { role: 'approver' }, query: { key: 'invoice-2' } }, rejectRes);
 
         expect(websocketBroadcast).toHaveBeenCalledWith({ type: 'invoice-updated', invoice: { key: 'invoice-1', status: 'APPROVED' } });
-        expect(websocketBroadcast).toHaveBeenCalledWith({ type: 'invoice-updated', invoice: { key: 'invoice-2', status: 'REJECTED' } });
+        expect(websocketBroadcast).toHaveBeenCalledWith({ type: 'invoice-updated', invoice: { key: 'invoice-2', status: 'DECLINE' } });
         expect(approveRes.json).toHaveBeenCalledWith({ key: 'invoice-1', status: 'APPROVED' });
-        expect(rejectRes.json).toHaveBeenCalledWith({ key: 'invoice-2', status: 'REJECTED' });
+        expect(rejectRes.json).toHaveBeenCalledWith({ key: 'invoice-2', status: 'DECLINE' });
     });
 });

@@ -420,6 +420,15 @@ async function start() {
 
                         const invoices = await invoiceManager.getInvoices(null);
                         const policies = await policiesManager.loadPolicies();
+                        const response = await daprClient.state.query(MONGO_BUDGETS, {
+                            filter: {},
+                            page: { limit: 300 }
+                        });
+
+                        const budgets = (response?.results || [])
+                            .map((item) => budgetsEngine.normalizeQueryRow(item))
+                            .filter(Boolean)
+                            .sort((a, b) => a._id.localeCompare(b._id));
 
                         const extractNumericPolicyValue = (ruleId, fallback) => {
                             const policy = (policies || []).find((p) => p.rule_id === ruleId || p.key === ruleId || p.value?.rule_id === ruleId);
@@ -448,6 +457,7 @@ async function start() {
 
                         return sendSocketResponse(socket, requestId, {
                             invoices,
+                            budgets,
                             autonomy: {
                                 ceiling: extractNumericPolicyValue('AUTONOMY-CEILING', 250),
                                 confidence: extractNumericPolicyValue('AUTONOMY-CONFIDENCE', 0.8)
@@ -513,7 +523,7 @@ async function start() {
                         if (user.role !== 'approver') {
                             return sendSocketResponse(socket, requestId, null, 'Unauthorized');
                         }
-                        const rejected = await invoiceManager.updateInvoiceStatus(data.tracking_id || data.state_key || data.key, 'REJECTED');
+                        const rejected = await invoiceManager.updateInvoiceStatus(data.tracking_id || data.state_key || data.key, 'DECLINE');
                         if (rejected) {
                             broadcastToClients({ type: 'invoice-updated', invoice: rejected });
                         }

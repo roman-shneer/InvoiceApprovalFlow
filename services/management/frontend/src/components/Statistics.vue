@@ -22,13 +22,61 @@ const props = defineProps({
                 <div class="kpi-value">{{ stpPercent }}%</div>
             </div>
             <div class="kpi-card" :class="{ warning: riskyAutoApprovals > 0 }">
-                <div class="kpi-label">Unsafe Green Points</div>
+                <div class="kpi-label">Policy Bypasses</div>
                 <div class="kpi-value">{{ riskyAutoApprovals }}</div>
             </div>
         </div>
     </div>
 
     <div class="grid">
+        <section class="panel">
+            <h2>Payments per Department</h2>            
+            <table border=1 style="border-collapse: collapse;width:100%;">
+                <tbody>
+                    <tr>
+                        <td>Department</td>
+                        <td>Budget</td>
+                        <td>Orders</td>
+                        <td>Commitments</td>                        
+                        <td>Bills</td>
+                        <td>Paid Amount</td>
+                    </tr>
+                    <tr v-for="department of Object.values(departmentInvoices)">
+                        <td>{{ department.name }}</td>
+                        <td>${{ budgets[department.name] || 0 }}</td>
+                        <td>{{department.orderedCount}}</td>
+                        <td>${{ department.orderedAmount }} ({{ (department.orderedAmount / (budgets[department.name] || 1) * 100).toFixed(2) }}%)</td>
+                        <td>{{ department.paymentCount }}</td>
+                        <td>${{ department.paymentAmount }} ({{ (department.paymentAmount / (budgets[department.name] || 1) * 100).toFixed(2) }}%)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="panel">
+            <h2>Invoice Statuses per Department</h2>            
+            <table border=1  style="border-collapse: collapse;width:100%;">
+                <tbody>
+                    <tr>
+                       <td>Department</td>
+                       <td>Total</td>
+                       <td>Auto Approved</td>
+                       <td>Manually Approved</td>
+                       <td>Under Review</td>
+                       <td>Rejected</td>
+                    </tr>
+                    <tr v-for="department of Object.values(departmentInvoices)">
+                        <td>{{ department.name }}</td>                        
+                        <td>{{ department.total }}</td>
+                        <td>{{ department.AUTO_APPROVE }}</td>
+                        <td>{{ department.APPROVED }}</td>
+                        <td>{{ department.HUMAN_REVIEW }}</td>
+                        <td>{{ department.REJECT }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+        
         <section class="panel">
             <h2>Invoice Route Distribution</h2>
             <p class="hint">Shows automation ratio and trust in deterministic routing.</p>
@@ -37,7 +85,7 @@ const props = defineProps({
                 <div class="legend">
                     <div class="legend-row"><span class="dot auto"></span>AUTO_APPROVE: {{ routeCounts.AUTO_APPROVE }}</div>
                     <div class="legend-row"><span class="dot review"></span>HUMAN_REVIEW: {{ routeCounts.HUMAN_REVIEW }}</div>
-                    <div class="legend-row"><span class="dot duplicate"></span>DUPLICATE: {{ routeCounts.DUPLICATE }}</div>
+                    <div class="legend-row"><span class="dot reject"></span>REJECT: {{ routeCounts.REJECT }}</div>                    
                 </div>
             </div>
         </section>
@@ -59,7 +107,7 @@ const props = defineProps({
 
         <section class="panel panel-wide">
             <h2>Scannable Security Matrix</h2>
-            <p class="hint">X = amount, Y = AI confidence. Green = AUTO_APPROVE, Red = HUMAN_REVIEW.</p>
+            <p class="hint">Invoice Amount ($), AI Confidence Level. Green = AUTO_APPROVE, Red = HUMAN_REVIEW, BLACK = REJECT.</p>
             <svg :viewBox="`0 0 ${svg.width} ${svg.height}`" class="scatter">
                 <line :x1="svg.left" :y1="svg.top" :x2="svg.left" :y2="svg.bottom" class="axis" />
                 <line :x1="svg.left" :y1="svg.bottom" :x2="svg.right" :y2="svg.bottom" class="axis" />
@@ -85,6 +133,7 @@ const props = defineProps({
             <div class="legend-inline">
                 <span><span class="dot auto"></span>AUTO_APPROVE</span>
                 <span><span class="dot review"></span>HUMAN_REVIEW</span>
+                <span><span class="dot reject"></span>REJECT</span>
             </div>
         </section>
     </div>
@@ -95,10 +144,13 @@ export default {
     name: 'Statistics',
     data() {
         return {
+            departmentInvoices:{},
+            budgets:{},
             routeCounts: {
                 AUTO_APPROVE: 0,
+                APPROVED:0,
                 HUMAN_REVIEW: 0,
-                DUPLICATE: 0
+                REJECT: 0,                
             },
             totals: {
                 total: 0
@@ -123,13 +175,16 @@ export default {
         };
     },
     computed: {
+        
         donutStyle() {
-            const total = Math.max(this.totals.total, 1);
-            const auto = (this.routeCounts.AUTO_APPROVE / total) * 100;
+            
+            const total = (this.totals.total) || 1;
+            const auto = (this.routeCounts.AUTO_APPROVE / total) * 100;            
             const review = (this.routeCounts.HUMAN_REVIEW / total) * 100;
-            const duplicate = (this.routeCounts.DUPLICATE / total) * 100;
+            const reject = (this.routeCounts.REJECT / total) * 100;
+            
             return {
-                background: `conic-gradient(#0f9d58 0% ${auto}%, #d93025 ${auto}% ${auto + review}%, #1a73e8 ${auto + review}% ${auto + review + duplicate}%, #ececec ${auto + review + duplicate}% 100%)`
+                background: `conic-gradient(#0f9d58 0% ${auto}%, #d93025 ${auto}% ${auto + review}%, #000000 ${auto + review}% ${auto  + review + reject}%)`
             };
         },
         stpPercent() {
@@ -138,11 +193,19 @@ export default {
         }
     },
     methods: {
+        statusToClass(status){
+            const classes={
+                'AUTO_APPROVE': 'point-auto',
+                'APPROVED': 'point-approved',
+                'HUMAN_REVIEW': 'point-review',
+                'REJECT': 'point-reject'
+            }
+            return classes[status] || '';
+        },
         normalizeStatus(invoice) {
             const status = String(invoice?.status || invoice?.expected?.route || '').toUpperCase();
-            if (status === 'AUTO_APPROVE' || status === 'AUTO_APPROVED' || status === 'AUTO-APPROVE') return 'AUTO_APPROVE';
-            if (status === 'HUMAN_REVIEW' || status === 'HUMAN-REVIEW') return 'HUMAN_REVIEW';
-            if (status === 'DUPLICATE') return 'DUPLICATE';
+            if (status === 'AUTO_APPROVE') return 'AUTO_APPROVE';
+            if (status === 'HUMAN_REVIEW') return 'HUMAN_REVIEW';            
             return status;
         },
         extractAmount(invoice) {
@@ -184,6 +247,7 @@ export default {
         async loadStatistics() {
             const data = await this.api.GetStatistics();
             const invoices = Array.isArray(data?.invoices) ? data.invoices : [];
+            const budgets = Array.isArray(data?.budgets) ? data.budgets : [];
 
             const ceiling = parseFloat(data?.autonomy?.ceiling);
             const confidence = parseFloat(data?.autonomy?.confidence);
@@ -192,30 +256,56 @@ export default {
                 confidence: Number.isNaN(confidence) ? 0.8 : confidence
             };
 
-            const routeCounts = { AUTO_APPROVE: 0, HUMAN_REVIEW: 0, DUPLICATE: 0 };
+            const routeCounts = { AUTO_APPROVE: 0, APPROVED: 0,  HUMAN_REVIEW: 0, REJECT:0};
             const triggerCounter = {};
             const scatter = [];
             let riskyAutoApprovals = 0;
             let maxAmount = this.autonomy.ceiling;
-
+            let departmentInvoices = {};
+            for(const budget of budgets){
+                this.budgets[budget.value.department]=budget.value.amount;
+            }
             for (const invoice of invoices) {
                 const status = this.normalizeStatus(invoice);
                 if (routeCounts[status] !== undefined) {
                     routeCounts[status] += 1;
                 }
 
+                if(typeof departmentInvoices[invoice.department]=='undefined'){
+                    departmentInvoices[invoice.department]={   
+                        name:invoice.department,                     
+                        orderedCount:0,
+                        orderedAmount:0,
+                        paymentCount:0,
+                        paymentAmount:0,
+                        AUTO_APPROVE:0,
+                        APPROVED:0,
+                        HUMAN_REVIEW:0,
+                        REJECT:0,
+                        total:0 
+                    };
+                }
                 const amount = this.extractAmount(invoice);
-                const confidenceValue = this.extractConfidence(invoice);
+                departmentInvoices[invoice.department].orderedCount+=1;
+                departmentInvoices[invoice.department].orderedAmount+=amount;
+                if(invoice.payment && invoice.payment.status=='CONFIRMED'){
+                    departmentInvoices[invoice.department].paymentCount+=1;
+                    departmentInvoices[invoice.department].paymentAmount+=parseFloat(invoice.payment.amount);
+                }
+                departmentInvoices[invoice.department][status]+=1;
+                departmentInvoices[invoice.department].total+=1;
+
+                const confidenceValue = this.extractConfidence(invoice);                
                 maxAmount = Math.max(maxAmount, amount || 0);
 
-                if ((status === 'AUTO_APPROVE' || status === 'HUMAN_REVIEW') && confidenceValue !== null) {
-                    scatter.push({ amount, confidence: confidenceValue, status });
+                if ((status === 'AUTO_APPROVE' || status === 'HUMAN_REVIEW' || status === 'REJECT') && confidenceValue !== null) {
+                    scatter.push({ amount, confidence: confidenceValue, status });                    
                     if (status === 'AUTO_APPROVE' && (amount > this.autonomy.ceiling || confidenceValue < this.autonomy.confidence)) {
                         riskyAutoApprovals += 1;
                     }
                 }
 
-                if (status === 'HUMAN_REVIEW') {
+                if (status === 'HUMAN_REVIEW' || status === 'REJECT') {
                     for (const rule of this.extractTriggeredRules(invoice)) {
                         const key = String(rule || '').trim();
                         if (!key) continue;
@@ -230,12 +320,13 @@ export default {
                 .slice(0, 12);
 
             this.routeCounts = routeCounts;
-            this.totals.total = invoices.length;
+            this.totals.total = scatter.length;
             this.topTriggers = sortedTriggers;
             this.topTriggerMax = sortedTriggers.length ? sortedTriggers[0].count : 1;
             this.scatterPoints = scatter;
             this.maxAmount = Math.max(1, maxAmount * 1.1);
             this.riskyAutoApprovals = riskyAutoApprovals;
+            this.departmentInvoices = departmentInvoices;
         }
     },
     mounted() {
@@ -347,12 +438,16 @@ export default {
     background: #0f9d58;
 }
 
+.dot.approved {
+    background: #03f47f;
+}
+
 .dot.review {
     background: #d93025;
 }
 
-.dot.duplicate {
-    background: #1a73e8;
+.dot.reject {
+    background: #000;
 }
 
 .bars {
@@ -421,9 +516,16 @@ export default {
     fill: #0f9d58;
     opacity: 0.88;
 }
-
+.point-approved {
+    fill: #03f47f;
+    opacity: 0.88;
+}
 .point-review {
     fill: #d93025;
+    opacity: 0.88;
+}
+.point-reject {
+    fill: #000;
     opacity: 0.88;
 }
 
