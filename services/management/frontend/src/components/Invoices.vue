@@ -192,8 +192,8 @@ export default {
                 return "❌HUMAN_REVIEW";
             }
 
-            if(invoice.expected.route.toLowerCase()=='rejected'){
-                return "❌REJECTED";
+            if(invoice.expected.route.toLowerCase()=='reject'){
+                return "❌REJECT";
             }
             
             if(invoice.expected.route.toLowerCase()=='auto_approve'){

@@ -64,7 +64,7 @@ class InvoicesRepository {
     }
 
     async updateInvoiceStatus(key, status) {
-        if (status !== 'APPROVED' && status !== "REJECTED") {
+        if (status !== 'APPROVED' && status !== "DECLINE") {
             return false;
         }
         let actualKey = key;

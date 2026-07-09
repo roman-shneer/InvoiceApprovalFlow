@@ -63,7 +63,7 @@ class InvoiceController {
         const key = req.query.key;
         if (currentUserRole == 'approver') {
 
-            const result = await this.manager.updateInvoiceStatus(key, "REJECTED");
+            const result = await this.manager.updateInvoiceStatus(key, "DECLINE");
             if (result) {
                 this.broadcastEvent('invoice-updated', result);
             }
