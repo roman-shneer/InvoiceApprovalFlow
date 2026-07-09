@@ -204,7 +204,7 @@ app.post('/api/v1/expenses', async (req, res) => {
         return res.status(202).json({
             tracking_id: trackingId,
             status: 'ACCEPTED',
-            message: `Invoice submitted successfully and queued for processing.[${trackingId}]`
+            message: `Invoice submitted successfully and queued for processing.`
         });
 
     } catch (error) {
@@ -254,13 +254,26 @@ async function runOutboxSweeper() {
     }
 }
 
+<<<<<<< Updated upstream
 // checking every 2 minutes
+=======
+>>>>>>> Stashed changes
 if (process.env.NODE_ENV !== 'test') {
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Ingestion Service successfully started on port ${PORT}`);
     });
+<<<<<<< Updated upstream
 
     setInterval(runOutboxSweeper, 2 * 60 * 1000);
     runOutboxSweeper();
 }
 
+=======
+<<<<<<< Updated upstream
+}
+=======
+    runOutboxSweeper();
+}
+
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
