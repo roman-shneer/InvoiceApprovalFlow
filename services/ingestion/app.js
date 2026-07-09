@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 8001;
 const STATE_STORE_NAME = 'approval-state';
 const PUB_SUB_NAME = 'approval-pubsub';
 const PUB_SUB_TOPIC = 'invoice.submitted';
-
+const MONGO_STATE_STORE = 'mongo-state';
 
 const daprClient = new DaprClient({ daprHost: DAPR_HOST, daprPort: DAPR_PORT });
 const app = express();
@@ -50,8 +50,7 @@ async function dispatchOutboxEvent(outboxEvent, correlationId) {
             outboxEvent.topic,
             outboxEvent.payload
         );
-
-        await daprClient.state.save(STATE_STORE_NAME, [
+        await daprClient.state.save(MONGO_STATE_STORE, [
             {
                 key: outboxEvent.event_id,
                 value: {
@@ -61,6 +60,7 @@ async function dispatchOutboxEvent(outboxEvent, correlationId) {
                 }
             }
         ]);
+
 
         logMessage('INFO', correlationId, `Dispatched outbox event ${outboxEvent.event_id} to ${outboxEvent.topic}`);
         return true;
@@ -181,16 +181,7 @@ app.post('/api/v1/expenses', async (req, res) => {
             created_at: new Date().toISOString()
         };
 
-        await daprClient.state.save(STATE_STORE_NAME, [
-            {
-                key: idempotencyKey,
-                value: {
-                    tracking_id: trackingId,
-                    correlation_id: correlationId,
-                    status: 'PROCESSING'
-                },
-                metadata: { ttlInSeconds: '86400' }
-            },
+        await daprClient.state.save(MONGO_STATE_STORE, [
             {
                 key: outboxEventId,
                 value: outboxEvent
@@ -221,8 +212,45 @@ app.use((req, res) => {
 });
 
 module.exports = app;
+async function runOutboxSweeper() {
+    try {
+        // search in mongo stuck outbox
+        const response = await daprClient.state.query(MONGO_STATE_STORE, {
+            filter: {
+                "EQ": { "value.processed": false }
+            },
+            page: { limit: 50 }
+        });
+
+        if (!response.results || response.results.length === 0) {
+            console.log("Not Found stuck outbox events");
+            return;
+        }
+        console.log("Found stuck outbox events:", response.results.length);
+        const twoMinutesAgo = Date.now() - (2 * 60 * 1000);
+
+        for (const item of response.results) {
+            const outboxEvent = item.data;
+            const createdAt = new Date(outboxEvent.created_at).getTime();
+
+            // If the event was not dispatched and has been stuck for more than 2 minutes — re-dispatch
+            if (createdAt < twoMinutesAgo) {
+                logMessage('WARN', outboxEvent.payload.correlation_id, `Sweeper re-dispatched stuck event ${outboxEvent.event_id}`);
+                await dispatchOutboxEvent(outboxEvent, outboxEvent.payload.correlation_id);
+            }
+        }
+    } catch (error) {
+        logMessage('ERROR', '0', `Outbox Sweeper error: ${error.message}`);
+    }
+}
+
+// checking every 2 minutes
 if (process.env.NODE_ENV !== 'test') {
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Ingestion Service successfully started on port ${PORT}`);
     });
+
+    setInterval(runOutboxSweeper, 2 * 60 * 1000);
+    runOutboxSweeper();
 }
+
