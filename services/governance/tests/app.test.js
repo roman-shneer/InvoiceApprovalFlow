@@ -30,7 +30,8 @@ jest.mock('@dapr/dapr', () => ({
 jest.mock('../resources/db', () => ({
     saveInvoiceToMongo: jest.fn(),
     getPolicies: jest.fn(),
-    getFxRates: jest.fn()
+    getFxRates: jest.fn(),
+    getPendingInvoices: jest.fn()
 }));
 
 jest.mock('../engines/checkHardStops', () => ({
@@ -71,6 +72,8 @@ describe('Governance main processing flow', () => {
         overrideMock = jest.requireMock('../engines/applyAutonomyOverride');
         localAiMock = jest.requireMock('../resources/ai');
 
+        dbMock.getPendingInvoices.mockResolvedValue([]);
+
         mockSubscribe.mockImplementation((pubsubName, topic, callback) => {
             capturedCallback = callback;
         });
@@ -90,6 +93,7 @@ describe('Governance main processing flow', () => {
 
         dbMock.getPolicies.mockResolvedValue([]);
         dbMock.getFxRates.mockResolvedValue({ USD: 1, EUR: 1.1 });
+        dbMock.getPendingInvoices.mockResolvedValue([]);
         hardStopsMock.checkHardStops.mockReturnValue({ triggered: false });
         evaluateAiMock.evaluateInvoiceWithAI.mockReturnValue({
             recommendation: 'AUTO_APPROVE',
@@ -142,6 +146,7 @@ describe('Governance main processing flow', () => {
 
         dbMock.getPolicies.mockResolvedValue(mockPoliciesPayload);
         dbMock.getFxRates.mockResolvedValue({ USD: 1, EUR: 1.1 });
+        dbMock.getPendingInvoices.mockResolvedValue([]);
         hardStopsMock.checkHardStops.mockReturnValue({ triggered: false });
 
         evaluateAiMock.evaluateInvoiceWithAI.mockReturnValue({
