@@ -180,7 +180,17 @@ app.post('/api/v1/expenses', async (req, res) => {
             processed: false,
             created_at: new Date().toISOString()
         };
-
+        await daprClient.state.save(STATE_STORE_NAME, [
+            {
+                key: idempotencyKey,
+                value: {
+                    tracking_id: trackingId,
+                    correlation_id: correlationId,
+                    status: 'PROCESSING'
+                },
+                metadata: { ttlInSeconds: '86400' }
+            }
+        ]);
         await daprClient.state.save(MONGO_STATE_STORE, [
             {
                 key: outboxEventId,
