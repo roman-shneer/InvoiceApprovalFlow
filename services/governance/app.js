@@ -1,6 +1,3 @@
-//require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
-//require('dotenv').config({});
-console.log("APP loaded", process.env.MONGO_DB, "with AI model:", process.env.AI_MODEL_NAME);
 const express = require('express');
 const { DaprServer, DaprClient } = require('@dapr/dapr');
 const { classifyInvoiceWithLocalAI } = require('./resources/ai');
@@ -182,7 +179,7 @@ async function publishInvoiceProcessedNotification(pendingInvoice, finalStatus, 
     }
 }
 
-module.exports = { start, publishInvoiceProcessedNotification, server, daprClient };
+module.exports = { start, publishInvoiceProcessedNotification, getPendingInvoices, server, daprClient };
 
 if (require.main === module) {
     start().catch(console.error);
