@@ -8,12 +8,13 @@ const { checkHardStops } = require('./engines/checkHardStops');
 const { applyAutonomyOverride } = require('./engines/applyAutonomyOverride');
 const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
 const { logCompliance } = require('./utils/logCompliance');
-const { getPolicies, getFxRates, saveInvoiceToMongo } = require('./resources/db');
+const { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices } = require('./resources/db');
 
 const appPort = "8002";
 const daprHost = "127.0.0.1";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
 const PUB_SUB_NAME = "approval-pubsub";
+const PUB_SUB_TOPIC = 'invoice.submitted'
 const NOTIFICATION_TOPIC = "invoice.processed";
 
 const daprClient = new DaprClient({
@@ -31,8 +32,20 @@ const server = new DaprServer({
         communicationTimeoutMs: 300000
     }
 });
+//find stuck invoices in mongo and send it to redis again
+async function checkPendingInvoices() {
+    const invoices = await getPendingInvoices();
 
+    for (const invoice of invoices) {
+        const trackingId = invoice.tracking_id || invoice.id || "unknown";
+        console.log(`[${trackingId}] Reprocessing pending invoice`);
+        await daprClient.pubsub.publish(PUB_SUB_NAME, PUB_SUB_TOPIC, invoice);
+    }
+}
 async function start() {
+
+    await checkPendingInvoices();
+
     await server.pubsub.subscribe(
         "approval-pubsub",
         "invoice.submitted",

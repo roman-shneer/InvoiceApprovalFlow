@@ -12,6 +12,23 @@ const client = new DaprClient({
 });
 
 
+async function getPendingInvoices() {
+    const response = await client.state.query("mongo-invoices", {
+        filter: {
+            EQ: {
+                status: 'PENDING'
+            }
+        },
+        page: { limit: 100 }
+    });
+
+    const invoices = response.results.map(item => {
+        return item.data || item.value;
+    });
+    return invoices;
+}
+
+
 async function getPolicies() {
     const response = await client.state.query("mongo-policies", {
         filter: {},
@@ -68,4 +85,4 @@ async function saveInvoiceToMongo(invoice) {
     }
 }
 
-module.exports = { getPolicies, getFxRates, saveInvoiceToMongo };
+module.exports = { getPendingInvoices, getPolicies, getFxRates, saveInvoiceToMongo };
