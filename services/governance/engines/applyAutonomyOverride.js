@@ -45,7 +45,7 @@ function applyAutonomyOverride(aiResult, invoice, rules, hardStop) {
         triggeredRules.push('AUTONOMY-CONFIDENCE');
     }
 
-    if (aiResult.recommendation === 'HUMAN_REVIEW' && aiResult.reason) {
+    if (['HUMAN_REVIEW', 'REJECT'].includes(aiResult.recommendation) && aiResult.reason) {
         reasons.push(aiResult.reason);
         if (Array.isArray(aiResult.triggered_rules)) {
             triggeredRules.push(...aiResult.triggered_rules);
@@ -63,16 +63,18 @@ function applyAutonomyOverride(aiResult, invoice, rules, hardStop) {
 
     if (reasons.length > 0) {
         return {
-            recommendation: 'HUMAN_REVIEW',
+            recommendation: aiResult.recommendation == 'REJECT' ? 'REJECT' : 'HUMAN_REVIEW',
             reason: reasons.join('; '),
-            triggered_rules: [...new Set(triggeredRules)]
+            triggered_rules: [...new Set(triggeredRules)],
+            confidence: confidence
         };
     }
 
     return {
         recommendation: aiResult.recommendation || 'AUTO_APPROVE',
         reason: aiResult.reason || 'Invoice falls within safe autonomy bounds.',
-        triggered_rules: aiResult.triggered_rules || []
+        triggered_rules: aiResult.triggered_rules || [],
+        confidence: confidence
     };
 }
 

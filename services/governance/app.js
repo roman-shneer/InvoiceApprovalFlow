@@ -112,7 +112,8 @@ async function start() {
                         invoice.audit_metadata = {
                             checked_at: new Date().toISOString(),
                             reason: cleanFinalReason,
-                            triggered_rules: uniqueTriggeredRules
+                            triggered_rules: uniqueTriggeredRules,
+                            confidence: finalResult.confidence || 0,
                         };
 
                         await saveInvoiceToMongo(invoice);
