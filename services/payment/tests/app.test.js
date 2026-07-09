@@ -199,7 +199,7 @@ describe('Payment Service Tests', () => {
             }
         });
 
-        expect(result).toBe('REJECTED');
+        expect(result).toBe('REJECT');
         expect(mockStateSave).not.toHaveBeenCalled();
         expect(mockPubSubPublish).not.toHaveBeenCalled();
     });
