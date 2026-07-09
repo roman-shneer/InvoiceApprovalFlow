@@ -4,7 +4,6 @@ const { classifyInvoiceWithLocalAI } = require('./resources/ai');
 const { checkHardStops } = require('./engines/checkHardStops');
 const { applyAutonomyOverride } = require('./engines/applyAutonomyOverride');
 const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
-const { logCompliance } = require('./utils/logCompliance');
 const { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices } = require('./resources/db');
 
 const appPort = "8002";
@@ -40,9 +39,6 @@ async function checkPendingInvoices() {
     }
 }
 async function start() {
-
-    await checkPendingInvoices();
-
     await server.pubsub.subscribe(
         "approval-pubsub",
         "invoice.submitted",
@@ -63,7 +59,7 @@ async function start() {
                     // Initialize empty buckets to accumulate ALL audit findings across the matrix boundaries
                     let allTriggeredRules = [];
                     let allReasons = [];
-                    let forceHumanReview = false;
+
 
                     try {
                         const activeRules = await getPolicies();
@@ -71,10 +67,8 @@ async function start() {
 
                         // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)
                         const hardStop = checkHardStops(invoice, activeRules, fxRates);
-                        console.log("****hardStop Evaluation:", trackingId, hardStop);
-
                         if (hardStop.triggered) {
-                            forceHumanReview = true;
+
                             // Support both multi-rule array returns or legacy single rule objects fallbacks
                             if (hardStop.rules && Array.isArray(hardStop.rules)) {
                                 allTriggeredRules = [...allTriggeredRules, ...hardStop.rules];
@@ -82,23 +76,22 @@ async function start() {
                                 allTriggeredRules.push(hardStop.rule);
                             }
                             allReasons.push(hardStop.reason);
-                            logCompliance("WARN", trackingId, correlationId, `Deterministic stop triggered: ${hardStop.reason}`);
+                            console.log(`[${trackingId}] WARN: ${correlationId}: Deterministic stop triggered: ${hardStop.reason}`);
                         }
 
                         // 2. Local AI Inference and Rule Engine Fallback Classification
                         let aiResult;
                         try {
                             aiResult = await classifyInvoiceWithLocalAI(invoice, activeRules);
-                            console.log("****classifyInvoiceWithLocalAI", trackingId, aiResult);
                         } catch (err) {
                             aiResult = evaluateInvoiceWithAI(invoice, activeRules);
-                            console.log("****evaluateInvoiceWithAI", aiResult);
-                            logCompliance("ERROR", trackingId, correlationId, `AI failure context: ${err.message}. Triggered static heuristics.`);
+                            console.log(`[${trackingId}] ERROR: AI failure context: ${err.message}. Triggered static heuristics.`);
                         }
+
+                        console.log(`[${trackingId}] AI Evaluation Result: ${JSON.stringify(aiResult)}`);
 
                         // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
                         const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules, hardStop);
-                        console.log("***finalResult", finalResult);
                         if (finalResult.triggered_rules && Array.isArray(finalResult.triggered_rules)) {
                             allTriggeredRules = [...allTriggeredRules, ...finalResult.triggered_rules];
                         }
@@ -110,12 +103,6 @@ async function start() {
                         const cleanFinalReason = allReasons.filter(Boolean).join(" ; ");
                         const finalStatus = finalResult.recommendation;
                         const aiApproved = finalStatus === 'AUTO_APPROVE';
-
-                        logCompliance(
-                            aiApproved ? "INFO" : "WARN",
-                            trackingId, correlationId,
-                            `Final Combined Verdict: ${finalStatus}. Reasons: ${cleanFinalReason}`
-                        );
 
                         // 5. Atomic state synchronization layer execution
                         invoice.status = finalStatus;
@@ -146,6 +133,19 @@ async function start() {
 
                     } catch (error) {
                         console.error(`[${trackingId}] Critical failure inside background worker:`, error.message);
+                        try {
+                            invoice.status = 'HUMAN_REVIEW';
+                            invoice.audit_metadata = {
+                                checked_at: new Date().toISOString(),
+                                reason: `Governance processing failure: ${error.message}`,
+                                triggered_rules: ['SYSTEM-ERROR'],
+                                confidence: 0
+                            };
+                            await saveInvoiceToMongo(invoice);
+                            await publishInvoiceProcessedNotification(invoice, 'HUMAN_REVIEW', false);
+                        } catch (persistErr) {
+                            console.error(`[${trackingId}] Failed to persist fallback HUMAN_REVIEW state:`, persistErr.message);
+                        }
                     }
                 });
 
@@ -160,6 +160,13 @@ async function start() {
 
     await server.start();
 
+    // Replay any previously stuck PENDING invoices after subscription is active.
+    try {
+        await checkPendingInvoices();
+    } catch (err) {
+        console.error(`[governance-startup] Failed to replay pending invoices:`, err.message);
+    }
+
     if (server.server && server.server.server) {
         server.server.server.timeout = 0;
         server.server.server.keepAliveTimeout = 0;
@@ -173,7 +180,6 @@ async function publishInvoiceProcessedNotification(pendingInvoice, finalStatus, 
     if (!pendingInvoice) return;
     try {
         await daprClient.pubsub.publish(PUB_SUB_NAME, NOTIFICATION_TOPIC, pendingInvoice);
-        console.log(`[${pendingInvoice.tracking_id}] Published invoice processed notification to ${NOTIFICATION_TOPIC}`);
     } catch (err) {
         console.error(`[${pendingInvoice.tracking_id}] Failed to publish invoice processed notification:`, err.message);
     }

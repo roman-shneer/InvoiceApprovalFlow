@@ -1,7 +1,6 @@
 
 
 const { DaprClient } = require('@dapr/dapr');
-const { logCompliance } = require('./../utils/logCompliance');
 const daprHost = "127.0.0.1";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
 
@@ -79,9 +78,9 @@ async function saveInvoiceToMongo(invoice) {
                 value: pendingInvoice
             }
         ]);
-        logCompliance("INFO", invoice.tracking_id, invoice.correlation_id, `Successfully registered record into MongoDB store.`);
+
     } catch (dbErr) {
-        logCompliance("ERROR", invoice.tracking_id, invoice.correlation_id, `Failed to save audit record in MongoDB: ${dbErr.message}`);
+        console.log(`[${invoice.tracking_id}] ERROR: ${invoice.correlation_id}: Failed to save audit record in MongoDB: ${dbErr.message}`);
     }
 }
 

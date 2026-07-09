@@ -50,9 +50,6 @@ jest.mock('../resources/ai', () => ({
     classifyInvoiceWithLocalAI: jest.fn()
 }));
 
-jest.mock('../utils/logCompliance', () => ({
-    logCompliance: jest.fn()
-}));
 
 describe('Governance main processing flow', () => {
     let capturedCallback;

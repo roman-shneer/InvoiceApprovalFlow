@@ -62,40 +62,37 @@ async function classifyInvoiceWithLocalAI(invoice, rules) {
 
 
     const systemPrompt = `You are a rigid corporate FinOps Compliance Auditor. 
-Analyze the invoice JSON and output strictly valid JSON matching the schema. No conversational text.
+Analyze the invoice JSON and output strictly valid JSON matching the schema. No conversational text. Do not duplicate your thoughts.
 
 ACTIVE POLICIES:
 ${formattedRules || "No specific rules provided. Follow general financial guidelines."}
 
-CRITICAL TEXT BLACKLIST:
-Prohibited keywords: "Alcohol", "Bar tab", "Liquor", "Wine", "Beer", "Gift", "Casino", "Luxury".
+RULES FOR RECOMMENDATION (Apply strictly from top to bottom):
 
-RULES FOR RECOMMENDATION (Apply strictly):
+- EXPLICIT ALCOHOL DETECTOR: Closely read the "description" field of every row inside "lineItems". If any description contains any of these exact words: "Alcohol", "Bar tab", "Liquor", "Wine", "Beer" -> You MUST immediately return "REJECT" and log ["GLOBAL-FRAUD"] in triggered_rules.
 
-- IF any line item description contains a word from the CRITICAL TEXT BLACKLIST -> Return "REJECT" and ["GLOBAL-FRAUD"].
+- CRITICAL ALLOWED SOFTWARE: Common corporate IT and SaaS tool names (such as "Jira", "Atlassian", "DataDog", "Slack", "AWS", "Zoom", "Github") are fully ALLOWED. Do NOT flag them as violations under any circumstances.
 
-- ELSE IF the total amount is higher than the policy limit ($200 for saas, $250 for travel) -> Return "HUMAN_REVIEW" and ["SAAS-01"] or ["TRAVEL-01"].
-
-- ELSE IF vendorKnown == false OR math fails OR receipt is missing -> Return "HUMAN_REVIEW" and the broken rule ID.
+- ELSE IF vendorKnown == false OR receiptPresent == false OR math fails -> Return "HUMAN_REVIEW" and list ALL broken rule IDs in "triggered_rules".
 
 - ELSE -> Return "AUTO_APPROVE" and [].
 
-OUTPUT FORMAT (Strict JSON only):
+OUTPUT FORMAT (Strict JSON only, no trailing commas):
 {
   "recommendation": "AUTO_APPROVE" | "HUMAN_REVIEW" | "REJECT",
   "confidence": 0.99,
-  "reason": "Clear explanation of the rule status.",
+  "reason": "One concise sentence explaining the exact rule matching.",
   "triggered_rules": []
 }
 `;
+
+
     //notes, scenario,expected
 
     const invoiceDetails = anonymizeInvoice(invoice);
 
     const userPrompt = `Analyze this invoice payload: ` + JSON.stringify(invoiceDetails);
 
-    console.log("***systemPrompt", systemPrompt);
-    console.log("***userPrompt", userPrompt);
     try {
         const response = await ollama.chat({
             model: process.env.AI_MODEL_NAME || 'qwen2.5:0.5b',
@@ -117,7 +114,6 @@ OUTPUT FORMAT (Strict JSON only):
         }
 
         const aiResult = JSON.parse(rawContent);
-        console.log("***AI answer", invoice.tracking_id, aiResult);
         // Fallback guardrail for schema properties validation
         if (!['AUTO_APPROVE', 'HUMAN_REVIEW', 'REJECT'].includes(aiResult.recommendation)) {
             aiResult.recommendation = 'HUMAN_REVIEW';
