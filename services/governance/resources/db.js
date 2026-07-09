@@ -85,4 +85,4 @@ async function saveInvoiceToMongo(invoice) {
     }
 }
 
-module.exports = { getPendingInvoices, getPolicies, getFxRates, saveInvoiceToMongo };
+module.exports = { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices };
