@@ -53,7 +53,7 @@ describe('Ingestion Service Transactional Outbox Pattern', () => {
 
         const response = await request(app)
             .post('/api/v1/expenses')
-            .set('Authorization', `Bearer ${mockToken}`) // <-- FIX: Inject valid token header to secure the endpoint path
+            .set('Authorization', `Bearer ${mockToken}`)
             .send(validInvoice);
 
         expect(response.status).toBe(202);
@@ -67,7 +67,19 @@ describe('Ingestion Service Transactional Outbox Pattern', () => {
             })
         );
 
+        // Первый вызов (NthCalledWith(1)) идет в Redis ('approval-state') для проверки дубликатов
         expect(mockStateSave).toHaveBeenNthCalledWith(1, 'approval-state', expect.arrayContaining([
+            expect.objectContaining({
+                key: expect.any(String),
+                value: expect.objectContaining({
+                    status: "PROCESSING",
+                    tracking_id: "INV-OUTBOX-99"
+                })
+            })
+        ]));
+
+        // Второй вызов (NthCalledWith(2)) сохраняет начальный Outbox (processed: false) в 'mongo-state'
+        expect(mockStateSave).toHaveBeenNthCalledWith(2, 'mongo-state', expect.arrayContaining([
             expect.objectContaining({
                 key: expect.stringContaining('outbox_'),
                 value: expect.objectContaining({
@@ -82,7 +94,8 @@ describe('Ingestion Service Transactional Outbox Pattern', () => {
             })
         ]));
 
-        expect(mockStateSave).toHaveBeenNthCalledWith(2, 'approval-state', [
+        // Третий вызов (NthCalledWith(3)) внутри dispatchOutboxEvent переводит статус в processed: true в 'mongo-state'
+        expect(mockStateSave).toHaveBeenNthCalledWith(3, 'mongo-state', [
             expect.objectContaining({
                 key: expect.stringContaining('outbox_'),
                 value: expect.objectContaining({
