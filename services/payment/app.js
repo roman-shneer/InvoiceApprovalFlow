@@ -107,8 +107,8 @@ async function start() {
             const originalAmount = parseFloat(invoice.total || invoice.amount || 0);
             console.log(`[${trackingId}] Payment request received`);
 
-            if (invoice.status !== 'AUTO_APPROVE' && invoice.status !== 'APPROVED' && invoice.status !== 'AUTO_APPROVED') {
-                return 'REJECTED';
+            if (invoice.status !== 'AUTO_APPROVE' && invoice.status !== 'APPROVED') {
+                return 'REJECT';
             }
 
             const currentScenario = String(invoice.scenario || invoice.notes || invoice.note || '').toLowerCase();
