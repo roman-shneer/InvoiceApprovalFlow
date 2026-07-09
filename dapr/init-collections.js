@@ -91,13 +91,6 @@ db.policies.insertMany([
         "_ttl": null
     },
     {
-        "_id": "GLOBAL-DUP",
-        "_key": "GLOBAL-DUP",
-        "value": { "rule_id": "GLOBAL-DUP", "category": "Global rules", "rule_text": "A duplicate is rejected as a duplicate — no second payment.", "is_active": true, "created_at": new Date() },
-        "_etag": crypto.randomUUID(),
-        "_ttl": null
-    },
-    {
         "_id": "GLOBAL-MATH",
         "_key": "GLOBAL-MATH",
         "value": { "rule_id": "GLOBAL-MATH", "category": "Global rules", "rule_text": "The line items + tax must reconcile to total.", "is_active": true, "created_at": new Date() },
