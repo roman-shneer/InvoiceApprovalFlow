@@ -254,26 +254,9 @@ async function runOutboxSweeper() {
     }
 }
 
-<<<<<<< Updated upstream
-// checking every 2 minutes
-=======
->>>>>>> Stashed changes
 if (process.env.NODE_ENV !== 'test') {
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Ingestion Service successfully started on port ${PORT}`);
     });
-<<<<<<< Updated upstream
-
-    setInterval(runOutboxSweeper, 2 * 60 * 1000);
     runOutboxSweeper();
 }
-
-=======
-<<<<<<< Updated upstream
-}
-=======
-    runOutboxSweeper();
-}
-
->>>>>>> Stashed changes
->>>>>>> Stashed changes
