@@ -69,7 +69,7 @@ To execute and verify the complete ApprovalFlow microservice ecosystem, run the 
 ```powershell
 # Step 1: Clone the repository and initialize your local environment configuration
 cp .env.example .env
-
+cp dapr/secrets.json.example dapr/secrets.json
 # Step 2: Bootstrap the core infrastructure mesh grid and local LLM loop
 docker compose up -d --build
 
