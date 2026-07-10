@@ -28,14 +28,129 @@ const server = new DaprServer({
         communicationTimeoutMs: 300000
     }
 });
-//find stuck invoices in mongo and send it to redis again
-async function checkPendingInvoices() {
-    const invoices = await getPendingInvoices();
+
+
+async function processInvoice(trackingId, invoice) {
+    const correlationId = invoice.correlation_id || "unknown";
+
+    // Initialize empty buckets to accumulate ALL audit findings across the matrix boundaries
+    let allTriggeredRules = [];
+    let allReasons = [];
+    console.log(`[${trackingId}] Processing`);
+    invoice.status = 'PROCESSING';
+    await saveInvoiceToMongo(invoice);
+    await publishInvoiceProcessedNotification(invoice, 'PROCESSING', false, 'Invoice processing');
+    try {
+        const activeRules = await getPolicies();
+        const fxRates = await getFxRates();
+
+        // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)
+        const hardStop = checkHardStops(invoice, activeRules, fxRates);
+        if (hardStop.triggered) {
+
+            // Support both multi-rule array returns or legacy single rule objects fallbacks
+            if (hardStop.rules && Array.isArray(hardStop.rules)) {
+                allTriggeredRules = [...allTriggeredRules, ...hardStop.rules];
+            } else if (hardStop.rule) {
+                allTriggeredRules.push(hardStop.rule);
+            }
+            allReasons.push(hardStop.reason);
+            console.log(`[${trackingId}] WARN: ${correlationId}: Deterministic stop triggered: ${hardStop.reason}`);
+        }
+
+        // 2. Local AI Inference and Rule Engine Fallback Classification
+        let aiResult;
+        try {
+            aiResult = await classifyInvoiceWithLocalAI(invoice, activeRules);
+        } catch (err) {
+            aiResult = evaluateInvoiceWithAI(invoice, activeRules);
+            console.log(`[${trackingId}] ERROR: AI failure context: ${err.message}. Triggered static heuristics.`);
+        }
+
+        console.log(`[${trackingId}] AI Evaluation Result: ${JSON.stringify(aiResult)}`);
+
+        // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
+        const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules, hardStop);
+        if (finalResult.triggered_rules && Array.isArray(finalResult.triggered_rules)) {
+            allTriggeredRules = [...allTriggeredRules, ...finalResult.triggered_rules];
+        }
+        allReasons.push(finalResult.reason);
+
+        // 4. Deduplicate rules array and compile formatted clear audit text records string
+        const uniqueTriggeredRules = [...new Set(allTriggeredRules)];
+
+        const cleanFinalReason = allReasons.filter(Boolean).join(" ; ");
+        const finalStatus = finalResult.recommendation;
+        const aiApproved = finalStatus === 'AUTO_APPROVE';
+
+        // 5. Atomic state synchronization layer execution
+        invoice.status = finalStatus;
+        invoice.audit_metadata = {
+            checked_at: new Date().toISOString(),
+            reason: cleanFinalReason,
+            triggered_rules: uniqueTriggeredRules,
+            confidence: finalResult.confidence || 0,
+        };
+
+        await saveInvoiceToMongo(invoice);
+        await publishInvoiceProcessedNotification(invoice, finalStatus, aiApproved);
+
+        // 6. Payment initiation routing boundary logic
+        if (aiApproved) {
+            try {
+                if (!invoice.payment_requested) {
+                    invoice.payment_requested = true;
+                    await daprClient.pubsub.publish(PUB_SUB_NAME, 'payment.requested', invoice);
+                    console.log(`[${trackingId}] Published payment.requested for ${trackingId}`);
+                } else {
+                    console.log(`[${trackingId}] payment.requested already set; skipping publish`);
+                }
+            } catch (err) {
+                console.error(`[${trackingId}] Failed to publish payment.requested:`, err.message);
+            }
+        }
+
+    } catch (error) {
+        console.error(`[${trackingId}] Critical failure inside background worker:`, error.message);
+        try {
+            invoice.status = 'HUMAN_REVIEW';
+            invoice.audit_metadata = {
+                checked_at: new Date().toISOString(),
+                reason: `Governance processing failure: ${error.message}`,
+                triggered_rules: ['SYSTEM-ERROR'],
+                confidence: 0
+            };
+            await saveInvoiceToMongo(invoice);
+            await publishInvoiceProcessedNotification(invoice, 'HUMAN_REVIEW', false);
+        } catch (persistErr) {
+            console.error(`[${trackingId}] Failed to persist fallback HUMAN_REVIEW state:`, persistErr.message);
+        }
+    }
+
+}
+
+async function startWorkerLoop() {
+    while (true) {
+        const invoices = await getPendingInvoices('PENDING', 1);
+        if (invoices && invoices.length > 0) {
+            const invoice = invoices[0];
+            const trackingId = invoice.tracking_id || invoice.id;
+            await processInvoice(trackingId, invoice);
+            await new Promise(res => setTimeout(res, 250));
+        } else {
+            await new Promise(res => setTimeout(res, 2000));
+        }
+    }
+}
+
+
+async function checkStuckInvoices() {
+    const invoices = await getPendingInvoices('PROCESSING', 1000);
 
     for (const invoice of invoices) {
         const trackingId = invoice.tracking_id || invoice.id || "unknown";
         console.log(`[${trackingId}] Reprocessing pending invoice`);
-        await daprClient.pubsub.publish(PUB_SUB_NAME, PUB_SUB_TOPIC, invoice);
+        await processInvoice(trackingId, invoice);
     }
 }
 async function start() {
@@ -46,109 +161,7 @@ async function start() {
             try {
                 const invoice = eventData && eventData.data ? eventData.data : eventData;
                 const trackingId = invoice.tracking_id || invoice.id || "unknown";
-
                 console.log(`[${trackingId}] Incoming invoice received via Pub/Sub`);
-
-                invoice.status = 'PENDING';
-                await saveInvoiceToMongo(invoice);
-                await publishInvoiceProcessedNotification(invoice, 'PENDING', false, 'Invoice received and pending processing');
-
-                setImmediate(async () => {
-                    const correlationId = invoice.correlation_id || "unknown";
-
-                    // Initialize empty buckets to accumulate ALL audit findings across the matrix boundaries
-                    let allTriggeredRules = [];
-                    let allReasons = [];
-
-
-                    try {
-                        const activeRules = await getPolicies();
-                        const fxRates = await getFxRates();
-
-                        // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)
-                        const hardStop = checkHardStops(invoice, activeRules, fxRates);
-                        if (hardStop.triggered) {
-
-                            // Support both multi-rule array returns or legacy single rule objects fallbacks
-                            if (hardStop.rules && Array.isArray(hardStop.rules)) {
-                                allTriggeredRules = [...allTriggeredRules, ...hardStop.rules];
-                            } else if (hardStop.rule) {
-                                allTriggeredRules.push(hardStop.rule);
-                            }
-                            allReasons.push(hardStop.reason);
-                            console.log(`[${trackingId}] WARN: ${correlationId}: Deterministic stop triggered: ${hardStop.reason}`);
-                        }
-
-                        // 2. Local AI Inference and Rule Engine Fallback Classification
-                        let aiResult;
-                        try {
-                            aiResult = await classifyInvoiceWithLocalAI(invoice, activeRules);
-                        } catch (err) {
-                            aiResult = evaluateInvoiceWithAI(invoice, activeRules);
-                            console.log(`[${trackingId}] ERROR: AI failure context: ${err.message}. Triggered static heuristics.`);
-                        }
-
-                        console.log(`[${trackingId}] AI Evaluation Result: ${JSON.stringify(aiResult)}`);
-
-                        // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
-                        const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules, hardStop);
-                        if (finalResult.triggered_rules && Array.isArray(finalResult.triggered_rules)) {
-                            allTriggeredRules = [...allTriggeredRules, ...finalResult.triggered_rules];
-                        }
-                        allReasons.push(finalResult.reason);
-
-                        // 4. Deduplicate rules array and compile formatted clear audit text records string
-                        const uniqueTriggeredRules = [...new Set(allTriggeredRules)];
-
-                        const cleanFinalReason = allReasons.filter(Boolean).join(" ; ");
-                        const finalStatus = finalResult.recommendation;
-                        const aiApproved = finalStatus === 'AUTO_APPROVE';
-
-                        // 5. Atomic state synchronization layer execution
-                        invoice.status = finalStatus;
-                        invoice.audit_metadata = {
-                            checked_at: new Date().toISOString(),
-                            reason: cleanFinalReason,
-                            triggered_rules: uniqueTriggeredRules,
-                            confidence: finalResult.confidence || 0,
-                        };
-
-                        await saveInvoiceToMongo(invoice);
-                        await publishInvoiceProcessedNotification(invoice, finalStatus, aiApproved);
-
-                        // 6. Payment initiation routing boundary logic
-                        if (aiApproved) {
-                            try {
-                                if (!invoice.payment_requested) {
-                                    invoice.payment_requested = true;
-                                    await daprClient.pubsub.publish(PUB_SUB_NAME, 'payment.requested', invoice);
-                                    console.log(`[${trackingId}] Published payment.requested for ${trackingId}`);
-                                } else {
-                                    console.log(`[${trackingId}] payment.requested already set; skipping publish`);
-                                }
-                            } catch (err) {
-                                console.error(`[${trackingId}] Failed to publish payment.requested:`, err.message);
-                            }
-                        }
-
-                    } catch (error) {
-                        console.error(`[${trackingId}] Critical failure inside background worker:`, error.message);
-                        try {
-                            invoice.status = 'HUMAN_REVIEW';
-                            invoice.audit_metadata = {
-                                checked_at: new Date().toISOString(),
-                                reason: `Governance processing failure: ${error.message}`,
-                                triggered_rules: ['SYSTEM-ERROR'],
-                                confidence: 0
-                            };
-                            await saveInvoiceToMongo(invoice);
-                            await publishInvoiceProcessedNotification(invoice, 'HUMAN_REVIEW', false);
-                        } catch (persistErr) {
-                            console.error(`[${trackingId}] Failed to persist fallback HUMAN_REVIEW state:`, persistErr.message);
-                        }
-                    }
-                });
-
                 return "SUCCESS";
 
             } catch (err) {
@@ -160,12 +173,14 @@ async function start() {
 
     await server.start();
 
-    // Replay any previously stuck PENDING invoices after subscription is active.
+    // Replay any previously stuck PROCESSING invoices
     try {
-        await checkPendingInvoices();
+        await checkStuckInvoices();
     } catch (err) {
         console.error(`[governance-startup] Failed to replay pending invoices:`, err.message);
     }
+
+    startWorkerLoop();
 
     if (server.server && server.server.server) {
         server.server.server.timeout = 0;

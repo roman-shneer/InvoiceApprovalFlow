@@ -11,14 +11,20 @@ const client = new DaprClient({
 });
 
 
-async function getPendingInvoices() {
+async function getPendingInvoices(status = 'PENDING', limit = 1) {
     const response = await client.state.query("mongo-invoices", {
         filter: {
             EQ: {
-                status: 'PENDING'
+                status: status
             }
         },
-        page: { limit: 100 }
+        page: { limit: limit },
+        sort: [
+            {
+                key: 'created_at',
+                order: 'ASC'
+            }
+        ]
     });
 
     const invoices = response.results.map(item => {
