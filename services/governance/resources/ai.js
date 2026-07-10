@@ -25,7 +25,19 @@ function anonymizeInvoice(invoice) {
 
     if (cleanInvoice.id) cleanInvoice.id = maskId(cleanInvoice.id);
     if (cleanInvoice.invoiceNumber) cleanInvoice.invoiceNumber = maskId(cleanInvoice.invoiceNumber);
-    const excessFields = ['notes', 'note', 'scenario', 'expected', 'status', 'idempotency_key', 'submitted_at', 'correlation_id', 'tracking_id', 'createdAt', 'date'];
+    const excessFields = [
+        'notes',
+        'note',
+        'audit_metadata',
+        'scenario',
+        'expected',
+        'status',
+        'idempotency_key',
+        'submitted_at',
+        'correlation_id',
+        'tracking_id',
+        'createdAt',
+        'date'];
     excessFields.forEach(field => {
         if (typeof cleanInvoice[field] !== 'undefined') {
             delete cleanInvoice[field];
@@ -45,64 +57,66 @@ async function classifyInvoiceWithLocalAI(invoice, rules) {
     const category = String(invoice.category || '').toLowerCase();
     const relevantRules = rules.filter(rule => {
         const ruleCategory = String(rule.category || '').toLowerCase();
-        return ['global rules', 'autonomy'].includes(ruleCategory) || ruleCategory.includes(category);
-        // return ruleCategory.includes(category);
+        return ['global rules'].includes(ruleCategory) || ruleCategory.includes(category);
     });
     const formattedRules = relevantRules
-        //.map((r, index) => `${index + 1}. [${r.rule_id}] Category: ${r.category} -> Requirement: ${r.rule_text}`)
-        .map((r, index) => `[${r.rule_id}] Category: ${r.category} -> Requirement: ${r.rule_text}`)
+        .map((r, index) => `${index + 1}. [${r.rule_id}] Category: ${r.category} -> Requirement: ${r.rule_text}`)
         .join('\n');
-    /*
-      const systemPrompt = `You are a rigid corporate FinOps Compliance Auditor for Northwind Components Ltd. 
-  Your task is to analyze the provided invoice JSON against the official corporate policies and output a strictly valid JSON response. 
-      
-  ### CRITICAL PROCESSING STEP (Chain of Thought Validation):
-  Before generating the final recommendation, you MUST evaluate the invoice using this exact 3-step logic:
-  1. Hard-Stops Check: Is the vendor unknown? Is currency non-USD and total > 1000? Does math fail? Is a required receipt missing? If ANY is true, it is an AUTOMATIC violation.
-  2. Category Limits Check: Check specific category rules (e.g., SAAS-01 max \$200, MEAL-01 max \$75/attendee, HW-01 max \$1000). If a limit is breached, it is an AUTOMATIC violation.
-  3. Autonomy Ceiling Check: Look at the invoice "total" amount. If (total > 250), you MUST recommend "HUMAN_REVIEW", even if confidence is 1.0 and the vendor is well-known. No exceptions.
-  
-  ### ACTIVE CORPORATE POLICIES:
-  
-  ${formattedRules || ""}
-  
-  [GLOBAL-RECEIPT] A receipt is required for any expense over \$25. (If total > 25 AND receiptPresent is false, flag this rule).
-  [GLOBAL-VENDOR] A new / unknown vendor (vendorKnown == false) is ALWAYS reviewed by a human, regardless of amount.
-  [GLOBAL-FX] Converted foreign-currency items over \$1,000 force a human stop.
-  [GLOBAL-MATH] The line items + taxAmount must reconcile exactly to total. (Sum of all lineItems quantity * unitPrice) + taxAmount == total.
-  [GLOBAL-FRAUD] Fraud-pattern signals (round-numbers to brand-new vendors, no line-item detail) are a hard stop.
-  
-  [AUTONOMY-CEILING] Maximum total amount allowed for automatic approval is \$250. If total > 250, recommend HUMAN_REVIEW.
-  [AUTONOMY-CONFIDENCE] Minimum required evaluation confidence threshold is 0.80.
-  
-  ### STRICT COMPLIANCE RULES:
-  - You are a validator, NOT a decision-maker. You have ZERO authority to make assumptions or exceptions.
-  - If an amount is even \$1 higher than a threshold, it is an AUTOMATIC VIOLATION.
-  - If ANY rule is violated or the total > 250, you MUST return "recommendation": "HUMAN_REVIEW" and list the broken rule IDs in "triggered_rules".
-  - "AUTO_APPROVE" is only allowed if absolutely ZERO rules are broken AND total <= 250 AND confidence >= 0.80.
-  
-  ### OUTPUT FORMAT (Strict JSON only, no trailing commas):
-  {
-    "recommendation": "AUTO_APPROVE" or "HUMAN_REVIEW",
-    "confidence": 1.0,
-    "reason": "Clear English explanation mentioning which specific rule ID was evaluated or violated.",
-    "triggered_rules": ["RULE-ID-1", "RULE-ID-2"]
-  }`;
-  */
 
-    const systemPrompt = `You are a rigid corporate FinOps Compliance Auditor. 
-Analyze the invoice JSON and output strictly valid JSON matching the schema. No conversational text. Do not duplicate your thoughts.
+    const systemPrompt = `You are an expert corporate FinOps Compliance Auditor. 
+Your task is to analyze the user's invoice payload against the following active corporate policies.
 
-ACTIVE POLICIES:
+ACTIVE CORPORATE POLICIES:
 ${formattedRules || "No specific rules provided. Follow general financial guidelines."}
 
-OUTPUT FORMAT (Strict JSON only, no trailing commas):
+CRITICAL INSTRUCTIONS:
+- Evaluate if the invoice violates any of the active policies (check amounts, category constraints, and vendor names).
+- If no rules are violated and the metadata looks normal, recommend "AUTO_APPROVE".
+- If any corporate rule is violated, or if the data feels anomalous, recommend "HUMAN_REVIEW".
+- You MUST respond strictly in valid JSON format. Do not write any conversational intro/outro text.
+- You are a rigid compliance validator, NOT a decision-maker. You have ZERO authority to make assumptions, exceptions, or compromises.
+- If an invoice amount is even $1 higher than a threshold specified in a rule, it is an AUTOMATIC VIOLATION.
+- DO NOT apply "safe assumptions" based on the vendor name (like DataDog) or receipt presence if a numeric limit is breached.
+- If ANY rule is violated, you MUST strictly recommend "HUMAN_REVIEW". "AUTO_APPROVE" is ONLY allowed if there are absolutely zero rule mismatches.
+
+The JSON object MUST follow this exact schema:
 {
-  "recommendation": "AUTO_APPROVE" | "HUMAN_REVIEW" | "REJECT",
-  "confidence": 0.99,
-  "reason": "One concise sentence explaining the exact rule matching.",
-  "triggered_rules": []
+  "recommendation": "AUTO_APPROVE" or "HUMAN_REVIEW",
+  "reason": "Clear English explanation mentioning which specific rule ID was evaluated or violated.",
+  "confidence": 0.80,
+  "triggered_rules": ["RULE-ID-1", "RULE-ID-2"]
 }`;
+
+    /*
+const systemPrompt = `You are an expert corporate FinOps Compliance Auditor. 
+Your task is to analyze the user's invoice payload against the following active corporate policies.
+
+CRITICAL LOGICAL INSTRUCTIONS:
+1. Evaluate the "total" field. If total > 250, you MUST strictly set "recommendation" to "HUMAN_REVIEW" and append "AUTONOMY-CEILING" to "triggered_rules".
+2. Evaluate the "category" and "lineItems.description" fields. If the category is "other" or contains an ambiguous mixed bundle (like "venue + lunch + transport bundled"), you MUST lower your "confidence" score strictly BELOW 0.80 (set it to 0.70 or 0.75).
+3. If your evaluated "confidence" score drops below 0.80, you MUST strictly set "recommendation" to "HUMAN_REVIEW" and append "AUTONOMY-CONFIDENCE" to "triggered_rules".
+
+ACTIVE CORPORATE POLICIES:
+${formattedRules || "No specific rules provided. Follow general financial guidelines."}
+
+CRITICAL INSTRUCTIONS:
+- Evaluate if the invoice violates any of the active policies (check amounts, category constraints, and vendor names).
+- If no rules are violated and the metadata looks normal, recommend "AUTO_APPROVE".
+- If any corporate rule is violated, or if the data feels anomalous, recommend "HUMAN_REVIEW".
+- You MUST respond strictly in valid JSON format. Do not write any conversational intro/outro text.
+- You are a rigid compliance validator, NOT a decision-maker. You have ZERO authority to make assumptions, exceptions, or compromises.
+- If an invoice amount is even $1 higher than a threshold specified in a rule, it is an AUTOMATIC VIOLATION.
+- DO NOT apply "safe assumptions" based on the vendor name (like DataDog) or receipt presence if a numeric limit is breached.
+- If ANY rule is violated, you MUST strictly recommend "HUMAN_REVIEW". "AUTO_APPROVE" is ONLY allowed if there are absolutely zero rule mismatches.
+
+The JSON object MUST follow this exact schema:
+{
+"recommendation": "AUTO_APPROVE" or "HUMAN_REVIEW",
+"reason": "Clear English explanation mentioning which specific rule ID was evaluated or violated.",
+"confidence": 0.70,
+"triggered_rules": ["RULE-ID-1", "RULE-ID-2"]
+}`;
+*/
     console.log("SystemPrompt:", systemPrompt);
     const invoiceDetails = anonymizeInvoice(invoice);
     const userPrompt = `Analyze this invoice payload: ` + JSON.stringify(invoiceDetails);
@@ -115,8 +129,8 @@ OUTPUT FORMAT (Strict JSON only, no trailing commas):
                 { role: 'user', content: userPrompt }
             ],
             options: {
-                temperature: 0.0,
-                top_p: 0.1,
+                temperature: 0.2,
+                top_p: 0.4,
                 num_predict: 400,
             },
             format: 'json'
