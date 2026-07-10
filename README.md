@@ -67,13 +67,16 @@ The runtime relies on dedicated Mongo-backed Dapr state stores for bounded respo
 To execute and verify the complete ApprovalFlow microservice ecosystem, run the following automated harness suite locally:
 
 ```powershell
-# Step 1: Bootstrap the core infrastructure mesh grid and local LLM loop
+# Step 1: Clone the repository and initialize your local environment configuration
+cp .env.example .env
+
+# Step 2: Bootstrap the core infrastructure mesh grid and local LLM loop
 docker compose up -d --build
 
-# Step 2: Run the automated cross-service integration and full journeys verification harness
+# Step 3: Run the automated cross-service integration and full journeys verification harness
 npm run test:all
 
-# Step 3: Run management service tests (backoffice API + resources + engines)
+# Step 4: Run management service tests (backoffice API + resources + engines)
 npm test --prefix services/management
 ```
 
