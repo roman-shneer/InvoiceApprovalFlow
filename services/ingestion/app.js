@@ -12,7 +12,7 @@ const STATE_STORE_NAME = 'approval-state';
 const PUB_SUB_NAME = 'approval-pubsub';
 const PUB_SUB_TOPIC = 'invoice.submitted';
 const MONGO_STATE_STORE = 'mongo-state';
-
+const MONGO_INVOICES_STORE = 'mongo-invoices';
 const daprClient = new DaprClient({ daprHost: DAPR_HOST, daprPort: DAPR_PORT });
 const app = express();
 
@@ -168,7 +168,8 @@ app.post('/api/v1/expenses', async (req, res) => {
             notes: body.notes || '',
             scenario: body.scenario || 'standard-ingest',
             expected: body.expected ?? null,
-            note: body.note ?? null
+            note: body.note ?? null,
+            status: 'PENDING'
         };
 
         const outboxEventId = `outbox_${crypto.randomUUID()}`;
@@ -197,6 +198,22 @@ app.post('/api/v1/expenses', async (req, res) => {
                 value: outboxEvent
             }
         ]);
+
+
+        //SAVING INVOICE TO MONGO
+        const pendingInvoice = {
+            ...eventPayload,
+            createdAt: new Date().toISOString()
+        };
+
+        await daprClient.state.save(MONGO_INVOICES_STORE, [
+            {
+                key: trackingId,
+                value: pendingInvoice
+            }
+        ]);
+
+
 
         logMessage('INFO', correlationId, `Transactionally saved invoice and outbox event ${outboxEventId}`);
         await dispatchOutboxEvent(outboxEvent, correlationId);
