@@ -46,17 +46,6 @@ async function processInvoice(trackingId, invoice) {
 
         // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)
         const hardStop = checkHardStops(invoice, activeRules, fxRates);
-        if (hardStop.triggered) {
-
-            // Support both multi-rule array returns or legacy single rule objects fallbacks
-            if (hardStop.rules && Array.isArray(hardStop.rules)) {
-                allTriggeredRules = [...allTriggeredRules, ...hardStop.rules];
-            } else if (hardStop.rule) {
-                allTriggeredRules.push(hardStop.rule);
-            }
-            allReasons.push(hardStop.reason);
-            console.log(`[${trackingId}] WARN: ${correlationId}: Deterministic stop triggered: ${hardStop.reason}`);
-        }
 
         // 2. Local AI Inference and Rule Engine Fallback Classification
         let aiResult;
@@ -71,15 +60,6 @@ async function processInvoice(trackingId, invoice) {
 
         // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
         const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules, hardStop);
-        if (finalResult.triggered_rules && Array.isArray(finalResult.triggered_rules)) {
-            allTriggeredRules = [...allTriggeredRules, ...finalResult.triggered_rules];
-        }
-        allReasons.push(finalResult.reason);
-
-        // 4. Deduplicate rules array and compile formatted clear audit text records string
-        const uniqueTriggeredRules = [...new Set(allTriggeredRules)];
-
-        const cleanFinalReason = allReasons.filter(Boolean).join(" ; ");
         const finalStatus = finalResult.recommendation;
         const aiApproved = finalStatus === 'AUTO_APPROVE';
 
@@ -87,8 +67,8 @@ async function processInvoice(trackingId, invoice) {
         invoice.status = finalStatus;
         invoice.audit_metadata = {
             checked_at: new Date().toISOString(),
-            reason: cleanFinalReason,
-            triggered_rules: uniqueTriggeredRules,
+            reason: finalResult.reason,
+            triggered_rules: finalResult.triggered_rules,
             confidence: finalResult.confidence || 0,
         };
 

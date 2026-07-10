@@ -32,7 +32,7 @@ function applyAutonomyOverride(aiResult, invoice, rules, hardStop) {
     const confidenceRule = activeRules.find(r => r.rule_id === 'AUTONOMY-CONFIDENCE' || r.key === 'AUTONOMY-CONFIDENCE' || (r.value && r.value.rule_id === 'AUTONOMY-CONFIDENCE'));
     const confidenceThreshold = extractNumericThreshold(confidenceRule, 0.80);
 
-    const reasons = [];
+    let reasons = [];
     const triggeredRules = [];
 
     if (amount > ceilingThreshold) {
@@ -52,19 +52,22 @@ function applyAutonomyOverride(aiResult, invoice, rules, hardStop) {
         }
     }
 
-    if (hardStop && hardStop.triggered) {
-        reasons.push(hardStop.reason);
-        if (hardStop.rules && Array.isArray(hardStop.rules)) {
-            triggeredRules.push(...hardStop.rules);
-        } else if (hardStop.rule) {
-            triggeredRules.push(hardStop.rule);
+    if (hardStop && hardStop.recommendation === 'HUMAN_REVIEW') {
+        const hardStopReason = hardStop.reason.split(";").map(r => r.trim());
+        reasons = [...reasons, ...hardStopReason];
+
+        if (hardStop.triggered_rules && Array.isArray(hardStop.triggered_rules)) {
+            triggeredRules.push(...hardStop.triggered_rules);
+        } else if (hardStop.triggered_rules && hardStop.triggered_rules.length > 0) {
+            triggeredRules.push(hardStop.triggered_rules[0]);
         }
     }
 
     if (reasons.length > 0) {
+        const uniqueReasons = [...new Set(reasons)];
         return {
             recommendation: aiResult.recommendation == 'REJECT' ? 'REJECT' : 'HUMAN_REVIEW',
-            reason: reasons.join('; '),
+            reason: uniqueReasons.join('; '),
             triggered_rules: [...new Set(triggeredRules)],
             confidence: confidence
         };

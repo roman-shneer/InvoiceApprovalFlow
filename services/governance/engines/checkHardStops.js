@@ -94,9 +94,10 @@ function checkHardStops(invoice, rules, fxRates = {}) {
     // Compile and return the multi-rule evaluation matrix schema payload to the orchestrator execution pipeline
     if (triggeredRules.length > 0) {
         return {
-            triggered: true,
-            rules: triggeredRules,
-            reason: reasons.join(" | ")
+            recommendation: 'HUMAN_REVIEW',
+            triggered_rules: triggeredRules,
+            reason: reasons.join(" ; "),
+            confidence: 1.0
         };
     }
 
