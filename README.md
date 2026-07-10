@@ -19,7 +19,7 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 │   │   ├── README.md                # ADR Index & Table of Contents
 │   │   ├── 0001-mongodb-core.md     # Core NoSQL Storage Selection (MongoDB Replica Set)
 │   │   ├── 0002-ingestion-nodejs.md # High-Throughput Ingestion Framework (Node.js Express)
-│   │   ├── 0003-rate-limiting.md    # Declarative Traffic Control via Dapr Middleware
+│   │   ├── 0003-rate-limiting.md    # Declarative Traffic Control via Envoy Gateway
 │   │   ├── 0004-governance-ai.md    # Hybrid Rules Engine & Local LLM Integration
 │   │   ├── 0005-ollama-llama3.md    # Private Offline LLM Infrastructure (Docker Loop)
 │   │   ├── 0006-management-ui.md    # Backoffice System Topology (Node.js + Vue 3)
@@ -29,14 +29,27 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 │   └── ARCHITECTURE.md              # System Boundary & Sequence Diagrams
 └── README.md                        # This Document
 ```
+
+
 🚀 Key Architectural Pillars
 
 *   **Dynamic Autonomous Guardrails:** The system implements a programmatic boundary inside the Node.js Governance service linked to a live MongoDB policy database. Out of the box, it enforces strict defaults ($250 ceiling and 0.80 AI confidence requirement) while supporting runtime updates via runtime policy injection without system restarts.
-*   **Upstream Rate Limiting Guard:** To secure internal components from traffic spikes, a declarative Dapr rate-limiting middleware intercepts payload volumes at the API Gateway layer, gracefully propagating 429 Too Many Requests exception states back to clients.
+*   **Upstream Rate Limiting Guard:** To secure internal infrastructure nodes from concurrency spikes and traffic exhaustion, an **Envoy API Gateway** instance intercepts payload volumes directly at the network edge (`gateway/envoy.yaml`). The gateway applies a declarative local rate-limiting filter (`envoy.filters.http.local_ratelimit`) configured with a strict ceiling of **5 requests per second** on the `/api/v1/expenses` endpoint, gracefully propagating `429 Too Many Requests` states back to upstream clients during high-concurrency bursts.
 *   **100% Data Privacy (Local Ollama / Llama 3):** To protect sensitive corporate invoice data from external processing risks, all AI compliance inference is containerized entirely locally using the open-source Llama 3 model inside the Docker internal network loop.
-*   **Full Production Test Matrix Verification:** The entire polyglot codebase is covered by an automated Jest testing ecosystem, ensuring full pipeline safety by simulating mock stream event cycles, macrotask loops flushing, and edge-case exceptions behaviors.
+*   **Automated Test Matrix Verification:** The platform includes automated Jest suites for ingestion, governance, payment, distributed E2E journeys, and the management backoffice service. These tests validate stream processing, orchestration behavior, and edge-case resilience.
 *   **Zero-Hardcode & Security Policies:** Real production credentials, database targets, and token pairs are entirely isolated into environment files and injected via Dapr Secrets. No plain-text access configuration is pushed to GitHub.
 *   **Distributed Tracing & Observability (OpenTelemetry + Zipkin):** Every microservice is fully instrumented using native Dapr OpenTelemetry integration. The tracing system runs on a 100% sampling rate (AlwaysOnSampler), collecting spans from Envoy Gateway, Ingestion, Pub/Sub channels, Rules Engine, and Payment Settler to construct full end-to-end trace flows visualised inside a Zipkin dashboard.
+
+### Runtime State Stores
+
+The runtime relies on dedicated Mongo-backed Dapr state stores for bounded responsibilities:
+
+* `approval-state`: idempotency keys and duplicate protection in ingestion.
+* `mongo-state`: ingestion outbox events and sweeper retries.
+* `mongo-invoices`: canonical invoice workflow state and audit metadata.
+* `mongo-policies`: dynamic governance/autonomy policy rules.
+* `mongo-fx-rates`: runtime FX conversion map used by governance and payment.
+* `mongo-budgets`: department budget pools consumed by payment settlement.
 
 🔗 Quick Links for Reviewers
 
@@ -57,6 +70,9 @@ docker compose up -d --build
 
 # Step 2: Run the automated cross-service integration and full journeys verification harness
 npm run test:all
+
+# Step 3: Run management service tests (backoffice API + resources + engines)
+npm test --prefix services/management
 ```
 
 Every deterministic gateway routing choice, dynamic rule-engine evaluation check, and Saga compensation event boundary can be trace-audited dynamically by accessing the local OpenTelemetry dashboard layout at: `http://localhost:9411`
@@ -82,7 +98,10 @@ The system comes pre-seeded with 3 explicit user roles inside MongoDB to verify 
    * **Web Access Portal:** `http://localhost/`
    * **Login / Username:** `admin`
    * **Password:** `admin`
-   * **Privileges:** Superuser rights. Authorized to modify database parametric parameters, hot-swap the dynamic threshold bounds (`AUTONOMY-CEILING` and `AUTONOMY-CONFIDENCE` values) inside MongoDB runtime context without restarts.
+   * **Privileges:** Superuser rights. Authorized to manage users, policies, FX rates, budgets, and the statistics dashboard. Can hot-swap dynamic threshold bounds (`AUTONOMY-CEILING`, `AUTONOMY-CONFIDENCE`) and runtime control records directly via the backoffice without service restarts.
 
 
-📂 **Core Platform Strategy Records:** Review our definitive trade-offs analysis regarding financial compliance thresholds and AI execution postures inside the official [Product Dilemma Documentation](docs/PRODUCT-DILEMMA.md).
+## ⚖️ Compliance Parameters Status (§6 Baseline Alignment)
+*   **Enforced Posture:** As required by §6 of the Northwind Expense Policy, this repository enforces the conservative baseline posture (**AUTONOMY-CEILING = $250** and **AUTONOMY-CONFIDENCE = 0.80**). 
+*   **Justification Record:** No unauthorized threshold tuning was performed in this release. Full risk analysis regarding latency vs. human review costs is documented under [docs/PRODUCT-DILEMMA.md](docs/PRODUCT-DILEMMA.md).
+
