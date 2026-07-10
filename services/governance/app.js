@@ -162,6 +162,7 @@ async function start() {
                 const invoice = eventData && eventData.data ? eventData.data : eventData;
                 const trackingId = invoice.tracking_id || invoice.id || "unknown";
                 console.log(`[${trackingId}] Incoming invoice received via Pub/Sub`);
+                //WILL BE PROCESSED in TOUR startWorkerLoop() function, so we just save it to mongo and return SUCCESS
                 return "SUCCESS";
 
             } catch (err) {
@@ -180,7 +181,9 @@ async function start() {
         console.error(`[governance-startup] Failed to replay pending invoices:`, err.message);
     }
 
-    startWorkerLoop();
+    if (process.env.NODE_ENV !== 'test') {
+        startWorkerLoop();
+    }
 
     if (server.server && server.server.server) {
         server.server.server.timeout = 0;
