@@ -21,7 +21,7 @@ describe('Distributed Multi-Service Real E2E Journey Harness', () => {
         expect(incomingInvoice.traceparent).toBe(w3cTraceParent);
 
         const hardStopResult = checkHardStops(incomingInvoice, []);
-        expect(hardStopResult.triggered).toBe(false);
+        expect(hardStopResult.recommendation).toBe('AUTO_APPROVE');
 
         const aiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.95 };
         const finalRouting = applyAutonomyOverride(aiResult, incomingInvoice, []);
@@ -51,8 +51,8 @@ describe('Distributed Multi-Service Real E2E Journey Harness', () => {
         };
 
         const hardStopResult = checkHardStops(incomingInvoice, []);
-        expect(hardStopResult.triggered).toBe(true);
-        expect(hardStopResult.rules).toContain('GLOBAL-RECEIPT');
+        expect(hardStopResult.recommendation).toBe('HUMAN_REVIEW');
+        expect(hardStopResult.triggered_rules).toContain('GLOBAL-RECEIPT');
     });
 
     test('Journey INV-1007: Out-of-Bounds Governance Human Review Escalation', async () => {
@@ -67,7 +67,7 @@ describe('Distributed Multi-Service Real E2E Journey Harness', () => {
         };
 
         const hardStopResult = checkHardStops(incomingInvoice, []);
-        expect(hardStopResult.triggered).toBe(false);
+        expect(hardStopResult.recommendation).toBe('AUTO_APPROVE');
 
         const aiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.98 };
         const finalRouting = applyAutonomyOverride(aiResult, incomingInvoice, []);
@@ -87,8 +87,8 @@ describe('Distributed Multi-Service Real E2E Journey Harness', () => {
         };
 
         const hardStopResult = checkHardStops(incomingInvoice, []);
-        expect(hardStopResult.triggered).toBe(true);
-        expect(hardStopResult.rules).toContain('GLOBAL-FX');
+        expect(hardStopResult.recommendation).toBe('HUMAN_REVIEW');
+        expect(hardStopResult.triggered_rules).toContain('GLOBAL-FX');
 
         const simulatedCompensatedState = {
             tracking_id: incomingInvoice.id,
