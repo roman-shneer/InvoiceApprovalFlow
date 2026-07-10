@@ -87,36 +87,6 @@ The JSON object MUST follow this exact schema:
   "triggered_rules": ["RULE-ID-1", "RULE-ID-2"]
 }`;
 
-    /*
-const systemPrompt = `You are an expert corporate FinOps Compliance Auditor. 
-Your task is to analyze the user's invoice payload against the following active corporate policies.
-
-CRITICAL LOGICAL INSTRUCTIONS:
-1. Evaluate the "total" field. If total > 250, you MUST strictly set "recommendation" to "HUMAN_REVIEW" and append "AUTONOMY-CEILING" to "triggered_rules".
-2. Evaluate the "category" and "lineItems.description" fields. If the category is "other" or contains an ambiguous mixed bundle (like "venue + lunch + transport bundled"), you MUST lower your "confidence" score strictly BELOW 0.80 (set it to 0.70 or 0.75).
-3. If your evaluated "confidence" score drops below 0.80, you MUST strictly set "recommendation" to "HUMAN_REVIEW" and append "AUTONOMY-CONFIDENCE" to "triggered_rules".
-
-ACTIVE CORPORATE POLICIES:
-${formattedRules || "No specific rules provided. Follow general financial guidelines."}
-
-CRITICAL INSTRUCTIONS:
-- Evaluate if the invoice violates any of the active policies (check amounts, category constraints, and vendor names).
-- If no rules are violated and the metadata looks normal, recommend "AUTO_APPROVE".
-- If any corporate rule is violated, or if the data feels anomalous, recommend "HUMAN_REVIEW".
-- You MUST respond strictly in valid JSON format. Do not write any conversational intro/outro text.
-- You are a rigid compliance validator, NOT a decision-maker. You have ZERO authority to make assumptions, exceptions, or compromises.
-- If an invoice amount is even $1 higher than a threshold specified in a rule, it is an AUTOMATIC VIOLATION.
-- DO NOT apply "safe assumptions" based on the vendor name (like DataDog) or receipt presence if a numeric limit is breached.
-- If ANY rule is violated, you MUST strictly recommend "HUMAN_REVIEW". "AUTO_APPROVE" is ONLY allowed if there are absolutely zero rule mismatches.
-
-The JSON object MUST follow this exact schema:
-{
-"recommendation": "AUTO_APPROVE" or "HUMAN_REVIEW",
-"reason": "Clear English explanation mentioning which specific rule ID was evaluated or violated.",
-"confidence": 0.70,
-"triggered_rules": ["RULE-ID-1", "RULE-ID-2"]
-}`;
-*/
     console.log("SystemPrompt:", systemPrompt);
     const invoiceDetails = anonymizeInvoice(invoice);
     const userPrompt = `Analyze this invoice payload: ` + JSON.stringify(invoiceDetails);
@@ -147,6 +117,10 @@ The JSON object MUST follow this exact schema:
         // Fallback guardrail for schema properties validation
         if (!['AUTO_APPROVE', 'HUMAN_REVIEW', 'REJECT'].includes(aiResult.recommendation)) {
             aiResult.recommendation = 'HUMAN_REVIEW';
+        }
+
+        if (aiResult.triggered_rules.includes('MEAL-03')) {
+            aiResult.recommendation = 'REJECT';
         }
 
         return {
