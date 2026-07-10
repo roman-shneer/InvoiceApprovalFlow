@@ -7,14 +7,14 @@ describe('checkHardStops Policy Compliance', () => {
             const invoice = { vendorKnown: true, vendor: 'Acme Corp' };
             const rules = [{ rule_id: 'GLOBAL-VENDOR' }];
             const result = checkHardStops(invoice, rules);
-            expect(result).toEqual({ triggered: false });
+            expect(result).toEqual({ recommendation: 'AUTO_APPROVE', triggered_rules: [], reason: 'No hard stop rules triggered.', confidence: 1.0 });
         });
 
         test('triggers GLOBAL-FRAUD when fraud flag matches constraint', () => {
             const invoice = { vendorKnown: true, fraudSignal: true };
             const result = checkHardStops(invoice, []);
-            expect(result.triggered).toBe(true);
-            expect(result.rules).toContain('GLOBAL-FRAUD');
+            expect(result.recommendation).toBe('HUMAN_REVIEW');
+            expect(result.triggered_rules).toContain('GLOBAL-FRAUD');
         });
 
         test('does not trigger GLOBAL-FRAUD only because policy is active without fraud indicators', () => {
@@ -31,15 +31,15 @@ describe('checkHardStops Policy Compliance', () => {
 
             const result = checkHardStops(invoice, rules);
 
-            expect(result).toEqual({ triggered: false });
+            expect(result).toEqual({ recommendation: 'AUTO_APPROVE', triggered_rules: [], reason: 'No hard stop rules triggered.', confidence: 1.0 });
         });
 
         test('triggers MEAL-01 when required compliance info is absent', () => {
             const invoice = { vendorKnown: true, missingMealInfo: true };
             const rules = [{ rule_id: 'MEAL-01' }];
             const result = checkHardStops(invoice, rules);
-            expect(result.triggered).toBe(true);
-            expect(result.rules).toContain('MEAL-01');
+            expect(result.recommendation).toBe('HUMAN_REVIEW');
+            expect(result.triggered_rules).toContain('MEAL-01');
         });
 
         test('does not trigger GLOBAL-VENDOR for known vendor when GLOBAL-VENDOR policy is active', () => {
@@ -62,9 +62,10 @@ describe('checkHardStops Policy Compliance', () => {
             const result = checkHardStops(invoice, rules);
 
             expect(result).toEqual({
-                triggered: true,
-                rules: ['GLOBAL-FX'],
-                reason: expect.stringContaining('FX hard stop')
+                recommendation: 'HUMAN_REVIEW',
+                triggered_rules: ['GLOBAL-FX'],
+                reason: expect.stringContaining('FX hard stop'),
+                confidence: 1.0
             });
         });
     });
@@ -74,8 +75,8 @@ describe('checkHardStops Policy Compliance', () => {
             const rules = [{ rule_id: 'GLOBAL-FX', threshold: 500 }];
             const invoice = { vendorKnown: true, currency: 'EUR', total: 600 };
             const result = checkHardStops(invoice, rules);
-            expect(result.triggered).toBe(true);
-            expect(result.rules).toContain('GLOBAL-FX');
+            expect(result.recommendation).toBe('HUMAN_REVIEW');
+            expect(result.triggered_rules).toContain('GLOBAL-FX');
         });
 
         test('uses fxRates conversion map for GLOBAL-FX check against USD threshold', () => {
@@ -85,17 +86,17 @@ describe('checkHardStops Policy Compliance', () => {
 
             const result = checkHardStops(invoice, rules, fxRates);
 
-            expect(result.triggered).toBe(true);
-            expect(result.rules).toContain('GLOBAL-FX');
-            expect(result.reason).toContain('~USD 1080.00');
+            expect(result.recommendation).toBe("HUMAN_REVIEW");
+            expect(result.triggered_rules).toContain("GLOBAL-FX");
+            expect(result.reason).toContain("~USD 1080.00");
         });
 
         test('applies custom receipt floor limit via policy values configuration', () => {
             const rules = [{ rule_id: 'GLOBAL-RECEIPT', value: 10 }];
             const invoice = { vendorKnown: true, amount: 15, receiptPresent: false };
             const result = checkHardStops(invoice, rules);
-            expect(result.triggered).toBe(true);
-            expect(result.rules).toContain('GLOBAL-RECEIPT');
+            expect(result.recommendation).toBe('HUMAN_REVIEW');
+            expect(result.triggered_rules).toContain('GLOBAL-RECEIPT');
         });
 
     });

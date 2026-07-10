@@ -101,7 +101,12 @@ function checkHardStops(invoice, rules, fxRates = {}) {
         };
     }
 
-    return { triggered: false };
+    return {
+        recommendation: 'AUTO_APPROVE',
+        triggered_rules: [],
+        reason: 'No hard stop rules triggered.',
+        confidence: 1.0
+    };
 }
 
 module.exports = { checkHardStops };
