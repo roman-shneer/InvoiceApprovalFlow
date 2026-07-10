@@ -1,5 +1,6 @@
 const mockStateGet = jest.fn();
 const mockStateSave = jest.fn();
+const mockStateQuery = jest.fn();
 const mockPubSubPublish = jest.fn();
 const mockSubscribe = jest.fn();
 
@@ -9,7 +10,8 @@ jest.mock('@dapr/dapr', () => {
             return {
                 state: {
                     get: mockStateGet,
-                    save: mockStateSave
+                    save: mockStateSave,
+                    query: mockStateQuery
                 },
                 pubsub: {
                     publish: mockPubSubPublish
@@ -31,6 +33,7 @@ describe('Transactional Saga Orchestration - Compensating Workflow Proof', () =>
 
     beforeEach(() => {
         jest.clearAllMocks();
+        mockStateQuery.mockResolvedValue({ results: [] });
 
         mockSubscribe.mockImplementation((pubsub, topic, cb) => {
             paymentCallback = cb;

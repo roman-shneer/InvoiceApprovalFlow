@@ -1,5 +1,6 @@
 const mockStateGet = jest.fn();
 const mockStateSave = jest.fn();
+const mockStateQuery = jest.fn();
 const mockPubSubPublish = jest.fn();
 const mockServerSubscribe = jest.fn();
 const mockServerStart = jest.fn().mockResolvedValue(true);
@@ -10,7 +11,8 @@ jest.mock('@dapr/dapr', () => {
             return {
                 state: {
                     get: mockStateGet,
-                    save: mockStateSave
+                    save: mockStateSave,
+                    query: mockStateQuery
                 },
                 pubsub: {
                     publish: mockPubSubPublish
@@ -34,6 +36,7 @@ describe('Payment Service Tests', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        mockStateQuery.mockResolvedValue({ results: [] });
 
         mockServerSubscribe.mockImplementation((pubsubName, topic, callback) => {
             appCallback = callback;
