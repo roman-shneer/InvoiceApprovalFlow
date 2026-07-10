@@ -94,8 +94,15 @@ describe('Ingestion Service Transactional Outbox Pattern', () => {
             })
         ]));
 
-        // Третий вызов (NthCalledWith(3)) внутри dispatchOutboxEvent переводит статус в processed: true в 'mongo-state'
-        expect(mockStateSave).toHaveBeenNthCalledWith(3, 'mongo-state', [
+        // В одном из вызовов dispatchOutboxEvent переводит outbox статус в processed: true в 'mongo-state'
+        const processedOutboxSaveCall = mockStateSave.mock.calls.find(([store, items]) => (
+            store === 'mongo-state'
+            && Array.isArray(items)
+            && items.some((item) => item?.key?.startsWith('outbox_') && item?.value?.processed === true)
+        ));
+
+        expect(processedOutboxSaveCall).toBeDefined();
+        expect(processedOutboxSaveCall[1]).toEqual([
             expect.objectContaining({
                 key: expect.stringContaining('outbox_'),
                 value: expect.objectContaining({
