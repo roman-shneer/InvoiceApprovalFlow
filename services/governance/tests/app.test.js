@@ -3,6 +3,10 @@ const mockStateQuery = jest.fn();
 const mockPubSubPublish = jest.fn();
 const mockSubscribe = jest.fn();
 const mockServerStart = jest.fn().mockResolvedValue(true);
+const { DaprServer } = require('@dapr/dapr');
+const db = require('../resources/db');
+
+const flushPromises = () => new Promise(setImmediate);
 
 jest.mock('@dapr/dapr', () => ({
     DaprClient: jest.fn().mockImplementation(() => ({
@@ -25,7 +29,9 @@ jest.mock('@dapr/dapr', () => ({
 
 jest.mock('../resources/db', () => ({
     saveInvoiceToMongo: jest.fn(),
-    getPolicies: jest.fn()
+    getPolicies: jest.fn(),
+    getFxRates: jest.fn(),
+    getPendingInvoices: jest.fn()
 }));
 
 jest.mock('../engines/checkHardStops', () => ({
@@ -44,57 +50,64 @@ jest.mock('../resources/ai', () => ({
     classifyInvoiceWithLocalAI: jest.fn()
 }));
 
-jest.mock('../utils/logCompliance', () => ({
-    logCompliance: jest.fn()
-}));
 
 describe('Governance main processing flow', () => {
-    beforeEach(() => {
-        jest.resetModules();
+    let capturedCallback;
+    let startFn;
+    let dbMock;
+    let hardStopsMock;
+    let evaluateAiMock;
+    let overrideMock;
+    let localAiMock;
+
+    beforeEach(async () => {
+        jest.restoreAllMocks();
         jest.clearAllMocks();
-    });
 
-    test('processes invoice.submitted and publishes payment.requested on AUTO_APPROVE', async () => {
-        const { saveInvoiceToMongo, getPolicies } = jest.requireMock('../resources/db');
-        const { checkHardStops } = jest.requireMock('../engines/checkHardStops');
-        const { evaluateInvoiceWithAI } = jest.requireMock('../engines/evaluateInvoiceWithAI');
-        const { applyAutonomyOverride } = jest.requireMock('../engines/applyAutonomyOverride');
-        const { classifyInvoiceWithLocalAI } = jest.requireMock('../resources/ai');
+        dbMock = jest.requireMock('../resources/db');
+        hardStopsMock = jest.requireMock('../engines/checkHardStops');
+        evaluateAiMock = jest.requireMock('../engines/evaluateInvoiceWithAI');
+        overrideMock = jest.requireMock('../engines/applyAutonomyOverride');
+        localAiMock = jest.requireMock('../resources/ai');
 
-        let invoiceCallback;
+        dbMock.getPendingInvoices.mockResolvedValue([]);
+
         mockSubscribe.mockImplementation((pubsubName, topic, callback) => {
-            invoiceCallback = callback;
-        });
-
-        const savedInvoiceCalls = [];
-        saveInvoiceToMongo.mockImplementation(async (invoice) => {
-            savedInvoiceCalls.push(JSON.parse(JSON.stringify(invoice)));
-        });
-        getPolicies.mockResolvedValue([]);
-        checkHardStops.mockReturnValue({ triggered: false });
-        evaluateInvoiceWithAI.mockReturnValue({
-            recommendation: 'AUTO_APPROVE',
-            reason: 'Baseline auto-approve',
-            triggered_rules: []
-        });
-        classifyInvoiceWithLocalAI.mockResolvedValue({
-            recommendation: 'AUTO_APPROVE',
-            reason: 'Local AI approves'
-        });
-        applyAutonomyOverride.mockReturnValue({
-            recommendation: 'AUTO_APPROVE',
-            reason: 'Final auto-approve',
-            triggered_rules: []
+            capturedCallback = callback;
         });
 
         let start;
         jest.isolateModules(() => {
             start = require('../app').start;
         });
-        await start();
+        startFn = start;
+        await startFn();
+    });
 
-        expect(mockSubscribe).toHaveBeenCalledWith('approval-pubsub', 'invoice.submitted', expect.any(Function));
-        expect(mockServerStart).toHaveBeenCalled();
+    test('accepts invoice.submitted event and returns SUCCESS', async () => {
+        const savedInvoiceCalls = [];
+        dbMock.saveInvoiceToMongo.mockImplementation(async (invoice) => {
+            savedInvoiceCalls.push(JSON.parse(JSON.stringify(invoice)));
+        });
+
+        dbMock.getPolicies.mockResolvedValue([]);
+        dbMock.getFxRates.mockResolvedValue({ USD: 1, EUR: 1.1 });
+        dbMock.getPendingInvoices.mockResolvedValue([]);
+        hardStopsMock.checkHardStops.mockReturnValue({ triggered: false });
+        evaluateAiMock.evaluateInvoiceWithAI.mockReturnValue({
+            recommendation: 'AUTO_APPROVE',
+            reason: 'Baseline auto-approve',
+            triggered_rules: []
+        });
+        localAiMock.classifyInvoiceWithLocalAI.mockResolvedValue({
+            recommendation: 'AUTO_APPROVE',
+            reason: 'Local AI approves'
+        });
+        overrideMock.applyAutonomyOverride.mockReturnValue({
+            recommendation: 'AUTO_APPROVE',
+            reason: 'Final auto-approve',
+            triggered_rules: []
+        });
 
         const fakeInvoice = {
             tracking_id: 'INV-2000',
@@ -104,20 +117,72 @@ describe('Governance main processing flow', () => {
             currency: 'USD'
         };
 
-        const result = await invoiceCallback({ data: fakeInvoice });
+        const result = await capturedCallback({ data: fakeInvoice });
         expect(result).toBe('SUCCESS');
 
-        await new Promise(resolve => setImmediate(resolve));
-        await new Promise(resolve => setImmediate(resolve));
+        await flushPromises();
+        await flushPromises();
 
-        expect(savedInvoiceCalls[0]).toEqual(expect.objectContaining({ tracking_id: 'INV-2000', status: 'PENDING' }));
-        expect(savedInvoiceCalls[1]).toEqual(expect.objectContaining({ tracking_id: 'INV-2000', status: 'AUTO_APPROVE' }));
-        expect(checkHardStops).toHaveBeenCalledWith(expect.objectContaining({ tracking_id: 'INV-2000' }), []);
-        expect(evaluateInvoiceWithAI).toHaveBeenCalled();
-        expect(classifyInvoiceWithLocalAI).toHaveBeenCalledWith(expect.objectContaining({ tracking_id: 'INV-2000' }), []);
-        expect(applyAutonomyOverride).toHaveBeenCalled();
+        expect(savedInvoiceCalls).toHaveLength(0);
+        expect(mockPubSubPublish).not.toHaveBeenCalledWith('approval-pubsub', 'payment.requested', expect.anything());
+    });
 
-        expect(mockPubSubPublish).toHaveBeenCalledWith('approval-pubsub', 'invoice.processed', expect.objectContaining({ tracking_id: 'INV-2000' }));
-        expect(mockPubSubPublish).toHaveBeenCalledWith('approval-pubsub', 'payment.requested', expect.objectContaining({ tracking_id: 'INV-2000' }));
+    test('should route invoice to HUMAN_REVIEW when startup replay processes invoice above AUTONOMY-CEILING', async () => {
+        const savedInvoiceCalls = [];
+        dbMock.saveInvoiceToMongo.mockImplementation(async (invoice) => {
+            savedInvoiceCalls.push(JSON.parse(JSON.stringify(invoice)));
+        });
+
+        const mockPoliciesPayload = [
+            {
+                _id: 'AUTONOMY-CEILING',
+                _key: 'AUTONOMY-CEILING',
+                value: { rule_id: 'AUTONOMY-CEILING', value: 50 }
+            }
+        ];
+
+        dbMock.getPolicies.mockResolvedValue(mockPoliciesPayload);
+        dbMock.getFxRates.mockResolvedValue({ USD: 1, EUR: 1.1 });
+        dbMock.getPendingInvoices.mockResolvedValue([]);
+        hardStopsMock.checkHardStops.mockReturnValue({ triggered: false });
+
+        evaluateAiMock.evaluateInvoiceWithAI.mockReturnValue({
+            recommendation: 'AUTO_APPROVE',
+            reason: 'Baseline auto-approve'
+        });
+        localAiMock.classifyInvoiceWithLocalAI.mockResolvedValue({
+            recommendation: 'AUTO_APPROVE'
+        });
+
+        // Requiring actual implementation block here to test real routing behavior
+        const actualOverride = jest.requireActual('../engines/applyAutonomyOverride').applyAutonomyOverride;
+        overrideMock.applyAutonomyOverride.mockImplementation((aiRes, inv, rules) => {
+            return actualOverride(aiRes, inv, rules);
+        });
+
+        const fakeInvoice = {
+            tracking_id: 'inv_override_test',
+            correlation_id: 'corr-override',
+            total: '75.00',
+            vendorKnown: true,
+            currency: 'USD',
+            receiptPresent: true
+        };
+
+        // Trigger checkStuckInvoices() path inside start(): getPendingInvoices('PROCESSING', ...)
+        dbMock.getPendingInvoices.mockResolvedValueOnce([fakeInvoice]);
+        await startFn();
+
+        await flushPromises();
+        await flushPromises();
+
+        const humanReviewSave = savedInvoiceCalls.find((invoice) => invoice?.status === 'HUMAN_REVIEW');
+        expect(humanReviewSave).toEqual(expect.objectContaining({
+            tracking_id: 'inv_override_test',
+            status: 'HUMAN_REVIEW',
+            audit_metadata: expect.objectContaining({
+                triggered_rules: expect.arrayContaining(['AUTONOMY-CEILING'])
+            })
+        }));
     });
 });

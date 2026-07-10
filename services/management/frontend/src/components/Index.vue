@@ -5,6 +5,9 @@ import Policies from "./Policies.vue";
 import InvoiceForm from './InvoiceForm.vue';
 import Api from "./../resources/api.js";
 import Invoices from './Invoices.vue';
+import FxRates from './FxRates.vue';
+import Budgets from './Budgets.vue';
+import Statistics from './Statistics.vue';
 const api = new Api();
 
 const isAuthenticated = ref(false);
@@ -89,12 +92,18 @@ onMounted(() => {
           </div>
           <button class="menu-btn" @click="page = 'policies'" v-if="user.role=='admin'">Policies</button>
           <button class="menu-btn" @click="page = 'users'" v-if="user.role=='admin'">Users</button>
+          <button class="menu-btn" @click="page = 'fxRate'" v-if="user.role=='admin'">fxRate</button>
+          <button class="menu-btn" @click="page = 'budgets'" v-if="user.role=='admin'">budgets</button>
+          <button class="menu-btn" @click="page = 'statistics'" v-if="user.role=='admin'">statistics</button>
         </div>
         <div class="content-div">       
           <InvoiceForm v-if="user.role=='submitter'" :api="api" ></InvoiceForm>  
           <Invoices  v-if="user.role=='submitter'||user.role=='approver'" :api="api" :role="user.role"></Invoices>
           <Policies v-if="page == 'policies' && user.role=='admin'" :api="api"></Policies>
           <Users v-if="page == 'users' && user.role=='admin'" :api="api"></Users>
+          <FxRates v-if="page == 'fxRate' && user.role=='admin'" :api="api"></FxRates>
+          <Budgets v-if="page == 'budgets' && user.role=='admin'" :api="api"></Budgets>
+          <Statistics v-if="page == 'statistics' && user.role=='admin'" :api="api"></Statistics>
         </div>
       </div>
     </div>

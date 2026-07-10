@@ -57,16 +57,16 @@ services:
         wait
       "
 
-  ##Dapr Placement is the Dapr actor registration service. All sidecars register here to know where Dapr actors live in the cluster. Without it, Dapr won't work.
+  ## DAPR PLACEMENT ##
   dapr-placement:
-    image: "daprio/placement:1.13.0"
+    image: "ghcr.io/dapr/placement:1.15.4"
     command: [ "/placement", "-port", "50005" ]
     ports:
       - "50005:50005"
     networks:
       - approval-flow-net
 
-  #Envoy is a reverse proxy. It accepts all incoming requests on port 8000 and routes them to the appropriate microservices. depends_on ensures that the ingestion-service starts before gateway. 
+  ## ENVOY REVERSE PROXY GATEWAY ##
   api-gateway:
     image: envoyproxy/envoy:v1.28.0
     volumes:
@@ -87,27 +87,34 @@ services:
       dockerfile: ./services/ingestion/Dockerfile
     ports:
       - "8001:8001"
+    environment:
+      - APP_PORT=8001
+      - DAPR_HTTP_HOST=127.0.0.1
+      - DAPR_HTTP_PORT=3500
+    depends_on:
+      redis:
+        condition: service_started
     networks:
       - approval-flow-net
-    depends_on:
-      - ingestion-dapr-sidecar
 
   ingestion-dapr-sidecar:
-    image: "daprio/daprd:1.13.0"
-    command: [ "/daprd", "--app-id", "ingestion-service", "--app-port", "8001", "--app-channel-address", "ingestion-service", "--placement-host-address", "dapr-placement:50005", "--components-path", "/dapr/components" ]
+    image: "ghcr.io/dapr/daprd:1.15.4"
+    container_name: ingestion-dapr-sidecar
+    command: [ "/daprd", "--app-id", "ingestion-service", "--app-port", "8001", "--app-channel-address", "ingestion-service", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components", "--config", "/dapr/config.yaml" ]
     volumes:
       - ./dapr/components:/dapr/components
       - ./dapr:/dapr
     depends_on:
       mongodb-db:
-        condition: service_healthy # ← ждёт пока MongoDB пройдёт healthcheck
-      governance-service:
+        condition: service_healthy
+      ingestion-service:
         condition: service_started
       dapr-placement:
         condition: service_started
     networks:
       - approval-flow-net
-    ## Governance & AI Service ##
+
+  ### Governance & AI Service ###
   governance-service:
     build:
       context: .
@@ -121,6 +128,7 @@ services:
       - DAPR_HTTP_HOST=127.0.0.1
       - DAPR_HTTP_PORT=3500
       - MONGO_DB=approvalflow
+      - AI_MODEL_NAME=${AI_MODEL_NAME}
     volumes:
       - ./services/governance:/app
       - /app/node_modules
@@ -133,11 +141,10 @@ services:
     networks:
       - approval-flow-net
 
-  ## Governance & AI Service DAPR ##
   governance-dapr-sidecar:
     image: "ghcr.io/dapr/daprd:1.15.4"
     container_name: governance-dapr-sidecar
-    command: [ "/daprd", "--app-id", "governance-service", "--app-port", "8002", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components" ]
+    command: [ "/daprd", "--app-id", "governance-service", "--app-port", "8002", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components", "--config", "/dapr/config.yaml" ]
     volumes:
       - ./dapr/components:/dapr/components
       - ./dapr:/dapr
@@ -159,7 +166,8 @@ services:
       - ./ollama_data:/root/.ollama
     networks:
       - approval-flow-net
-  ### Ollama model ###
+
+  ### Ollama model puller ###
   ollama-model-puller:
     image: curlimages/curl:latest
     networks:
@@ -167,9 +175,10 @@ services:
     depends_on:
       - ollama-service
     restart: "no"
-    entrypoint: [ "sh", "-c", "until curl -s http://ollama-service:11434/api/tags > /dev/null; do echo 'Waiting for Ollama...'; sleep 5; done; echo 'Ollama is up! Pulling llama3...'; curl -X POST http://ollama-service:11434/api/pull -d '{\"name\": \"llama3\"}'" ]
+    #entrypoint: [ "sh", "-c", "until curl -s http://ollama-service:11434/api/tags > /dev/null; do echo 'Waiting for Ollama...'; sleep 5; done; echo 'Ollama is up! Pulling llama3...'; curl -X POST http://ollama-service:11434/api/pull -d '{\"name\": \"llama3\"}'" ]
+    entrypoint: [ "sh", "-c", "until curl -s http://ollama-service:11434/api/tags > /dev/null; do echo 'Waiting for Ollama...'; sleep 5; done; echo 'Ollama is up! Pulling target model...'; curl -X POST http://ollama-service:11434/api/pull -d \"{\\\"name\\\": \\\"${AI_MODEL_NAME}\\\"}\"" ]
 
-  ## UI ##
+  ### Management UI Service ###
   management-service:
     build:
       context: .
@@ -183,7 +192,7 @@ services:
       - APP_PORT=80
       - DAPR_HTTP_HOST=127.0.0.1
       - DAPR_HTTP_PORT=3500
-      - INVOICE_URL=http://ingestion-service:8001/api/v1/expenses
+      - INVOICE_URL=http://api-gateway:8000/api/v1/expenses
     volumes:
       - ./services/management/backend:/app
       - /app/node_modules
@@ -198,7 +207,7 @@ services:
   management-dapr-sidecar:
     image: "ghcr.io/dapr/daprd:1.15.4"
     container_name: management-dapr-sidecar
-    command: [ "/daprd", "--app-id", "management-service", "--app-port", "80", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components" ]
+    command: [ "/daprd", "--app-id", "management-service", "--app-port", "80", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components", "--config", "/dapr/config.yaml" ]
     volumes:
       - ./dapr/components:/dapr/components
       - ./dapr:/dapr
@@ -237,7 +246,7 @@ services:
   payment-dapr-sidecar:
     image: "ghcr.io/dapr/daprd:1.15.4"
     container_name: payment-dapr-sidecar
-    command: [ "/daprd", "--app-id", "payment-service", "--app-port", "8010", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components" ]
+    command: [ "/daprd", "--app-id", "payment-service", "--app-port", "8010", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components", "--config", "/dapr/config.yaml" ]
     volumes:
       - ./dapr/components:/dapr/components
       - ./dapr:/dapr
@@ -249,3 +258,12 @@ services:
       dapr-placement:
         condition: service_started
     network_mode: "service:payment-service"
+
+  ## OPEN TELEMETRY TRACING VISUALIZER ##
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: approval-flow-zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - approval-flow-net

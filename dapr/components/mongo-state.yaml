@@ -1,0 +1,26 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: mongo-state
+spec:
+  type: state.mongodb
+  version: v1
+  metadata:  
+  - name: host
+    value: "mongodb-db:27017"
+  - name: databaseName
+    value: "approvalflow"
+  - name: collectionName
+    value: "ingestion_store"
+  - name: writeConcern
+    value: "majority"
+  - name: readConcern
+    value: "majority"
+  - name: operationTimeout
+    value: "5s"
+  - name: keyPrefix
+    value: "none"
+  - name: indexes
+    value: '[{"key":{"value.processed":1}}]'
+  auth:
+    secretStore: approval-secret-store

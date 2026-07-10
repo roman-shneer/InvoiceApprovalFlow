@@ -3,7 +3,7 @@ class InvoiceManager {
         this.resource = resource;
     }
 
-    async sendInvoices(payload) {
+    async sendInvoices(payload, token) {
 
         try {
             const data = typeof payload === 'string' ? JSON.parse(payload) : payload;
@@ -20,7 +20,7 @@ class InvoiceManager {
             } else {
                 throw new Error('Unsupported invoice payload format');
             }
-            const results = await this.resource.sendInvoices(invoices);
+            const results = await this.resource.sendInvoices(invoices, token);
             return { success: true, message: 'ok', results: results };
         } catch (error) {
             console.error('JSON parsing error:', error.message);

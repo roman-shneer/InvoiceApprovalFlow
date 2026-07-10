@@ -220,6 +220,34 @@ class Api {
         return await this.sendWsRequest('save-policy', { policy, original_rule_id: originalRuleId });
     }
 
+    async GetFxRates() {
+        return await this.sendWsRequest('get-fx-rates');
+    }
+
+    async SaveFxRate(rate) {
+        return await this.sendWsRequest('save-fx-rate', { rate });
+    }
+
+    async DeleteFxRate(code) {
+        return await this.sendWsRequest('delete-fx-rate', { code });
+    }
+
+    async GetBudgets() {
+        return await this.sendWsRequest('get-budgets');
+    }
+
+    async SaveBudget(budget) {
+        return await this.sendWsRequest('save-budget', { budget });
+    }
+
+    async DeleteBudget(department) {
+        return await this.sendWsRequest('delete-budget', { department });
+    }
+
+    async GetStatistics() {
+        return await this.sendWsRequest('get-statistics');
+    }
+
     async GetUsers() {
         return await this.sendWsRequest('get-users');
     }
@@ -254,12 +282,6 @@ class Api {
     async connectNotificationStream() {
         this.connectSseNotifications();
     }
-
-    async RejectInvoice(invoice) {
-        const tracking_id = invoice.tracking_id || invoice.id || invoice.key?.split('||').pop();
-        return await this.sendWsRequest('reject-invoice', { tracking_id, state_key: invoice.key });
-    }
-
 
 }
 

@@ -4,9 +4,13 @@
     "main": "app.js",
     "license": "MIT",
     "scripts": {
-        "start": "node app.js"
+        "start": "node app.js",
+        "test": "jest --passWithNoTests --roots tests"
     },
     "dependencies": {
         "@dapr/dapr": "^3.4.0"
+    },
+    "devDependencies": {
+        "jest": "^30.4.2"
     }
 }

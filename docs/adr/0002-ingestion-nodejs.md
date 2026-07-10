@@ -1,4 +1,4 @@
-# ADR 0010: Ingestion service (Migration to Node.js)
+# ADR 0002: Ingestion service (Migration to Node.js)
 
 ## Status
 Accepted

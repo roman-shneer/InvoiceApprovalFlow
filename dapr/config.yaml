@@ -1,0 +1,13 @@
+apiVersion: dapr.io/v1alpha1
+kind: Configuration
+metadata:
+  name: daprConfig
+spec:
+  httpPipeline:
+    handlers:
+    - name: rate-limit-middleware
+      type: middleware.http.ratelimit
+  tracing:
+    samplingRate: 1
+    zipkin:
+      endpointAddress: "http://approval-flow-zipkin:9411/api/v2/spans"

@@ -1,4 +1,4 @@
-# ADR 0009: Selection of MongoDB for Invoice Document Storage
+# ADR 0001: Selection of MongoDB for Invoice Document Storage
 
 ## Status
 Accepted (Supercedes ADR 0001)

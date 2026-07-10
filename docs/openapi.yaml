@@ -1,0 +1,111 @@
+openapi: 3.0.3
+info:
+  title: ApprovalFlow Expense Management Ingestion API
+  description: High-throughput declarative gateway entry point for automated expense invoice validation, orchestration and auditing.
+  version: 1.0.0
+paths:
+  /api/v1/expenses:
+    post:
+      summary: Submit raw invoice payload for compliance ingestion
+      operationId: submitExpense
+      parameters:
+        - name: x-correlation-id
+          in: header
+          required: false
+          schema:
+            type: string
+            example: corr_8520a20a-b370-dce4-89cb-7d0bc1fa78d6
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - id
+              properties:
+                id:
+                  type: string
+                  example: INV-1001
+                vendor:
+                  type: string
+                  example: Acme Corp
+                invoiceNumber:
+                  type: string
+                  example: AC-001
+                total:
+                  type: number
+                  format: float
+                  example: 45.00
+                currency:
+                  type: string
+                  example: USD
+                receiptPresent:
+                  type: boolean
+                  example: true
+                vendorKnown:
+                  type: boolean
+                  example: true
+      responses:
+        '202':
+          description: Invoice request accepted successfully and queued for processing pipeline.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tracking_id:
+                    type: string
+                    example: INV-1001
+                  status:
+                    type: string
+                    example: ACCEPTED
+                  message:
+                    type: string
+                    example: Invoice submitted successfully and queued for processing.
+        '200':
+          description: Duplicate request detected via idempotency keys. Original process state returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tracking_id:
+                    type: string
+                    example: INV-1001
+                  status:
+                    type: string
+                    example: PROCESSING
+                  message:
+                    type: string
+                    example: Duplicate request detected. Invoice is already being processed.
+        '400':
+          description: Bad request due to missing required json schema identifiers parameters.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Invalid schema. Required: id
+        '429':
+          description: Too Many Requests. Rate limiting threshold triggered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Too Many Requests
+        '500':
+          description: Internal Server Error. Downstream or infrastructure critical exception.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Internal Server Error

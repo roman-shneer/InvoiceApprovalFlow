@@ -3,37 +3,81 @@ const AUTONOMY = {
     CONFIDENCE: 0.8,
     HARDSTOPS: ["GLOBAL-VENDOR", "GLOBAL-FX", "GLOBAL-MATH", "GLOBAL-FRAUD", "GLOBAL-RECEIPT"]
 };
-function applyAutonomyOverride(aiResult, invoice, rules) {
+function applyAutonomyOverride(aiResult, invoice, rules, hardStop) {
     const activeRules = Array.isArray(rules) ? rules : [];
     const amount = parseFloat(invoice.amount || invoice.total || 0);
     const confidence = parseFloat(aiResult.confidence || invoice.confidence || 0);
 
+    const extractNumericThreshold = (rule, fallback) => {
+        if (!rule) return fallback;
+        const candidates = [
+            rule.rule_text,
+            rule.value?.rule_text,
+            rule.value?.value,
+            rule.value?.threshold,
+            rule.value,
+            rule.threshold
+        ];
+        for (const candidate of candidates) {
+            if (candidate === undefined || candidate === null) continue;
+            const parsed = parseFloat(candidate);
+            if (!Number.isNaN(parsed)) return parsed;
+        }
+        return fallback;
+    };
+
     const ceilingRule = activeRules.find(r => r.rule_id === 'AUTONOMY-CEILING' || r.key === 'AUTONOMY-CEILING' || (r.value && r.value.rule_id === 'AUTONOMY-CEILING'));
-    const ceilingThreshold = ceilingRule ? parseFloat(ceilingRule.value?.value ?? ceilingRule.value?.threshold ?? ceilingRule.value ?? ceilingRule.threshold ?? 250) : 250;
+    const ceilingThreshold = extractNumericThreshold(ceilingRule, 250);
 
     const confidenceRule = activeRules.find(r => r.rule_id === 'AUTONOMY-CONFIDENCE' || r.key === 'AUTONOMY-CONFIDENCE' || (r.value && r.value.rule_id === 'AUTONOMY-CONFIDENCE'));
-    const confidenceThreshold = confidenceRule ? parseFloat(confidenceRule.value?.value ?? confidenceRule.value?.threshold ?? confidenceRule.value ?? confidenceRule.threshold ?? 0.80) : 0.80;
+    const confidenceThreshold = extractNumericThreshold(confidenceRule, 0.80);
+
+    let reasons = [];
+    const triggeredRules = [];
 
     if (amount > ceilingThreshold) {
-        return {
-            recommendation: 'HUMAN_REVIEW',
-            reason: `Invoice amount $${amount} exceeds autonomy ceiling of $${ceilingThreshold}.`,
-            triggered_rules: ['AUTONOMY-CEILING']
-        };
+        reasons.push(`Invoice amount $${amount} exceeds autonomy ceiling of $${ceilingThreshold}.`);
+        triggeredRules.push('AUTONOMY-CEILING');
     }
 
     if (confidence < confidenceThreshold) {
+        reasons.push(`AI confidence level ${confidence} is below required autonomy threshold of ${confidenceThreshold}.`);
+        triggeredRules.push('AUTONOMY-CONFIDENCE');
+    }
+
+    if (['HUMAN_REVIEW', 'REJECT'].includes(aiResult.recommendation) && aiResult.reason) {
+        reasons.push(aiResult.reason);
+        if (Array.isArray(aiResult.triggered_rules)) {
+            triggeredRules.push(...aiResult.triggered_rules);
+        }
+    }
+
+    if (hardStop && hardStop.recommendation === 'HUMAN_REVIEW') {
+        const hardStopReason = hardStop.reason.split(";").map(r => r.trim());
+        reasons = [...reasons, ...hardStopReason];
+
+        if (hardStop.triggered_rules && Array.isArray(hardStop.triggered_rules)) {
+            triggeredRules.push(...hardStop.triggered_rules);
+        } else if (hardStop.triggered_rules && hardStop.triggered_rules.length > 0) {
+            triggeredRules.push(hardStop.triggered_rules[0]);
+        }
+    }
+
+    if (reasons.length > 0) {
+        const uniqueReasons = [...new Set(reasons)];
         return {
-            recommendation: 'HUMAN_REVIEW',
-            reason: `AI confidence level ${confidence} is below required autonomy threshold of ${confidenceThreshold}.`,
-            triggered_rules: ['AUTONOMY-CONFIDENCE']
+            recommendation: aiResult.recommendation == 'REJECT' ? 'REJECT' : 'HUMAN_REVIEW',
+            reason: uniqueReasons.join('; '),
+            triggered_rules: [...new Set(triggeredRules)],
+            confidence: confidence
         };
     }
 
     return {
         recommendation: aiResult.recommendation || 'AUTO_APPROVE',
         reason: aiResult.reason || 'Invoice falls within safe autonomy bounds.',
-        triggered_rules: aiResult.triggered_rules || []
+        triggered_rules: aiResult.triggered_rules || [],
+        confidence: confidence
     };
 }
 

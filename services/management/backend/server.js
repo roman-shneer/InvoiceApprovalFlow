@@ -5,6 +5,7 @@ const bcrypt = require('bcrypt');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const WebSocket = require('ws');
 const { DaprClient } = require('@dapr/dapr');
 const daprHost = process.env.DAPR_HTTP_HOST || "127.0.0.1";
@@ -16,6 +17,8 @@ const daprClient = new DaprClient({
 });
 
 const MONGO_USERS = "mongo-users";
+const MONGO_FX_RATES = "mongo-fx-rates";
+const MONGO_BUDGETS = "mongo-budgets";
 
 const UsersInit = require('./resources/users.init.js');
 
@@ -32,6 +35,10 @@ async function start() {
     const PoliciesRepository = require('./resources/policies.repository.js');
     const PoliciesEngine = require('./engines/policies.engine.js');
     const PoliciesManager = require('./managers/policies.manager.js');
+    const FxRatesEngine = require('./engines/fx-rates.engine.js');
+    const fxRatesEngine = new FxRatesEngine();
+    const BudgetsEngine = require('./engines/budgets.engine.js');
+    const budgetsEngine = new BudgetsEngine();
 
 
 
@@ -346,11 +353,148 @@ async function start() {
                         await policiesManager.deletePolicy(data.rule_id);
                         return sendSocketResponse(socket, requestId, { success: true });
                     }
+                    case 'get-fx-rates': {
+                        if (user.role !== 'admin') {
+                            return sendSocketResponse(socket, requestId, null, 'Unauthorized');
+                        }
+
+                        const response = await daprClient.state.query(MONGO_FX_RATES, {
+                            filter: {},
+                            page: { limit: 200 }
+                        });
+
+                        const fxRates = (response?.results || [])
+                            .map((item) => fxRatesEngine.normalizeQueryRow(item))
+                            .filter(Boolean)
+                            .sort((a, b) => a._id.localeCompare(b._id));
+
+                        return sendSocketResponse(socket, requestId, { rates: fxRates });
+                    }
+                    case 'save-fx-rate': {
+                        if (user.role !== 'admin') {
+                            return sendSocketResponse(socket, requestId, null, 'Unauthorized');
+                        }
+
+                        const record = fxRatesEngine.buildStateRecord(data?.rate, crypto.randomUUID());
+                        if (!record) {
+                            return sendSocketResponse(socket, requestId, null, 'Invalid FX rate payload');
+                        }
+
+                        await daprClient.state.save(MONGO_FX_RATES, [{ key: record._id, value: record }]);
+                        return sendSocketResponse(socket, requestId, { success: true, rate: record });
+                    }
+                    case 'delete-fx-rate': {
+                        if (user.role !== 'admin') {
+                            return sendSocketResponse(socket, requestId, null, 'Unauthorized');
+                        }
+
+                        const code = String(data?.code || '').trim().toUpperCase();
+                        if (!code) {
+                            return sendSocketResponse(socket, requestId, null, 'FX code is required');
+                        }
+
+                        await daprClient.state.delete(MONGO_FX_RATES, code);
+                        return sendSocketResponse(socket, requestId, { success: true });
+                    }
+                    case 'get-budgets': {
+                        if (user.role !== 'admin') {
+                            return sendSocketResponse(socket, requestId, null, 'Unauthorized');
+                        }
+
+                        const response = await daprClient.state.query(MONGO_BUDGETS, {
+                            filter: {},
+                            page: { limit: 300 }
+                        });
+
+                        const budgets = (response?.results || [])
+                            .map((item) => budgetsEngine.normalizeQueryRow(item))
+                            .filter(Boolean)
+                            .sort((a, b) => a._id.localeCompare(b._id));
+
+                        return sendSocketResponse(socket, requestId, { budgets });
+                    }
+                    case 'get-statistics': {
+                        if (user.role !== 'admin') {
+                            return sendSocketResponse(socket, requestId, null, 'Unauthorized');
+                        }
+
+                        const invoices = await invoiceManager.getInvoices(null);
+                        const policies = await policiesManager.loadPolicies();
+                        const response = await daprClient.state.query(MONGO_BUDGETS, {
+                            filter: {},
+                            page: { limit: 300 }
+                        });
+
+                        const budgets = (response?.results || [])
+                            .map((item) => budgetsEngine.normalizeQueryRow(item))
+                            .filter(Boolean)
+                            .sort((a, b) => a._id.localeCompare(b._id));
+
+                        const extractNumericPolicyValue = (ruleId, fallback) => {
+                            const policy = (policies || []).find((p) => p.rule_id === ruleId || p.key === ruleId || p.value?.rule_id === ruleId);
+                            if (!policy) {
+                                return fallback;
+                            }
+
+                            const candidates = [
+                                policy.rule_text,
+                                policy.value?.rule_text,
+                                policy.value?.value,
+                                policy.value?.threshold,
+                                policy.value,
+                                policy.threshold
+                            ];
+
+                            for (const candidate of candidates) {
+                                const parsed = parseFloat(candidate);
+                                if (!Number.isNaN(parsed)) {
+                                    return parsed;
+                                }
+                            }
+
+                            return fallback;
+                        };
+
+                        return sendSocketResponse(socket, requestId, {
+                            invoices,
+                            budgets,
+                            autonomy: {
+                                ceiling: extractNumericPolicyValue('AUTONOMY-CEILING', 250),
+                                confidence: extractNumericPolicyValue('AUTONOMY-CONFIDENCE', 0.8)
+                            }
+                        });
+                    }
+                    case 'save-budget': {
+                        if (user.role !== 'admin') {
+                            return sendSocketResponse(socket, requestId, null, 'Unauthorized');
+                        }
+
+                        const record = budgetsEngine.buildStateRecord(data?.budget, crypto.randomUUID());
+                        if (!record) {
+                            return sendSocketResponse(socket, requestId, null, 'Invalid budget payload');
+                        }
+
+                        await daprClient.state.save(MONGO_BUDGETS, [{ key: record._id, value: record }]);
+                        return sendSocketResponse(socket, requestId, { success: true, budget: record });
+                    }
+                    case 'delete-budget': {
+                        if (user.role !== 'admin') {
+                            return sendSocketResponse(socket, requestId, null, 'Unauthorized');
+                        }
+
+                        const department = String(data?.department || '').trim();
+                        if (!department) {
+                            return sendSocketResponse(socket, requestId, null, 'Budget department is required');
+                        }
+
+                        await daprClient.state.delete(MONGO_BUDGETS, department);
+                        return sendSocketResponse(socket, requestId, { success: true });
+                    }
                     case 'send-invoice': {
                         if (user.role !== 'submitter') {
                             return sendSocketResponse(socket, requestId, null, 'Unauthorized');
                         }
-                        const result = await invoiceManager.sendInvoices(data.invoice);
+                        const result = await invoiceManager.sendInvoices(data.invoice, token);
                         if (Array.isArray(result)) {
                             result.forEach(item => broadcastToClients({ type: 'invoice-created', invoice: item }));
                         } else if (result) {
@@ -379,7 +523,7 @@ async function start() {
                         if (user.role !== 'approver') {
                             return sendSocketResponse(socket, requestId, null, 'Unauthorized');
                         }
-                        const rejected = await invoiceManager.updateInvoiceStatus(data.tracking_id || data.state_key || data.key, 'REJECTED');
+                        const rejected = await invoiceManager.updateInvoiceStatus(data.tracking_id || data.state_key || data.key, 'DECLINE');
                         if (rejected) {
                             broadcastToClients({ type: 'invoice-updated', invoice: rejected });
                         }
@@ -402,7 +546,7 @@ async function start() {
 
 
 
-    const userResource = new UserRepository(daprClient);          // Передали пул БД в ресурс!
+    const userResource = new UserRepository(daprClient);
     const cryptoEngine = new CryptoEngine();
     const authManager = new AuthManager(userResource, cryptoEngine);
 
