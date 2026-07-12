@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama-service
+  labels:
+    app: ollama-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama-service
+  template:
+    metadata:
+      labels:
+        app: ollama-service
+    spec:
+      containers:
+      - name: ollama
+        image: ollama/ollama:latest
+        ports:
+        - containerPort: 11434
+        command: ["sh", "-c"]
+        args:
+        - |
+          ollama serve & 
+          echo 'Starting Ollama server...'; 
+          sleep 5; 
+          echo 'Pulling target model...'; 
+          ollama pull $(AI_MODEL_NAME);
+          echo 'Model download complete! Keeping container alive...';
+          wait
+        env:
+        - name: AI_MODEL_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: approval-config
+              key: ai-model-name
+        volumeMounts:
+        - name: ollama-storage
+          mountPath: /root/.ollama
+
+      volumes:
+      - name: ollama-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-service
+spec:
+  selector:
+    app: ollama-service
+  ports:
+  - protocol: TCP
+    port: 11434
+    targetPort: 11434
