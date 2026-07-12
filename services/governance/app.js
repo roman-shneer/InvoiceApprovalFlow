@@ -167,7 +167,6 @@ async function start() {
                 saveInvoiceToMongo((invoice.status = 'PENDING', invoice)).catch(async (dbErr) => {
                     //if mongo dead - send to pubsub invoice.failed-to-save to retry later
                     console.error(`[${invoice.tracking_id}] Failed asynchronous background Mongo save:`, dbErr.message);
-                    console.log("send publishInvoiceNotification1");
                     publishInvoiceNotification({
                         invoice,
                         error: dbErr.message,
