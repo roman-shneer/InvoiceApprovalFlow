@@ -27,12 +27,6 @@ const server = new DaprServer({
     serverHost: "0.0.0.0",
     serverPort: appPort,
     client: daprClient
-    /*
-    clientOptions: {
-        daprHost: daprHost,
-        daprPort: daprPort,
-        communicationTimeoutMs: 300000
-    }*/
 });
 
 
@@ -135,7 +129,7 @@ async function checkStuckInvoices() {
     for (const invoice of invoices) {
         const trackingId = invoice.tracking_id || invoice.id || "unknown";
         console.log(`[${trackingId}] Reprocessing pending invoice`);
-        await processInvoice(trackingId, invoice);
+        await publishInvoiceNotification(invoice, PUB_SUB_TOPIC);
     }
 }
 
@@ -193,12 +187,6 @@ async function start() {
         }
     );
 
-<<<<<<< Updated upstream
-    await startServerWithRetry();
-=======
-<<<<<<< Updated upstream
-    await server.start();
-=======
     // Subscribe to the "invoice.failed-to-save" topic to handle invoices that failed to save to MongoDB
     await server.pubsub.subscribe(
         PUB_SUB_NAME,
@@ -235,8 +223,7 @@ async function start() {
     );
 
     await startServerWithRetry();
->>>>>>> Stashed changes
->>>>>>> Stashed changes
+
 
     // Replay any previously stuck PROCESSING invoices
     try {
@@ -249,11 +236,6 @@ async function start() {
         startWorkerLoop();
     }
 
-    if (server.server && server.server.server) {
-        server.server.server.timeout = 0;
-        server.server.server.keepAliveTimeout = 0;
-    }
-    console.log(`🚀 Node.js Governance Agent successfully started on port ${appPort}`);
 }
 
 async function saveToFile(invoice, message) {
