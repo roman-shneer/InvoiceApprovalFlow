@@ -169,8 +169,15 @@ The benchmark utilizes a fast, line-by-line CSV stream cursor to pipe rows out o
 *   **Mean Response Latency**: 15.1 ms (p95: 34.1 ms, median: 8.9 ms)
 *   **Network Socket Timeouts (`ERR_SOCKET_TIMEOUT`)**: 139 *(Observed during the peak workload phase at 15 req/sec due to local cluster network overhead).*
 
-#### Telemetry & Latency Distribution Chart
-![Artillery Performance Dashboard](./artillery/report-screenshot.png)
+#### Load charts and telemetry
+| Overview | Socket Timeouts |
+| :---: | :---: |
+| <img width="764" height="326" alt="image" src="https://github.com/user-attachments/assets/9de5a624-c35d-4c9c-99e0-784413ae388d" /> | <img width="761" height="326" alt="image" src="https://github.com/user-attachments/assets/95dda164-df38-43f9-8033-71962a277fe9" /> |
+| **Response Latency** | **HTTP 202 Ingestion Throughput** |
+| <img width="764" height="418" alt="image" src="https://github.com/user-attachments/assets/86cbbece-f003-4cf4-9476-f01aac7d7ce7" /> | <img width="956" height="430" alt="image" src="https://github.com/user-attachments/assets/bee03f32-095d-49e3-a9bc-381e0e923854" /> |
+
+
+
 
 ---
 
