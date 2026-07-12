@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-init-script
+data:
+  init-collections.js: |    
+    print("Collections initialization completed");
+
+  init-replica.sh: |
+    #!/bin/bash
+    mongod --replSet rs0 --bind_ip_all --quiet &
+    until mongosh --eval 'db.adminCommand({ping:1})' >/dev/null 2>&1; do
+      echo 'Waiting for MongoDB...' && sleep 2;
+    done
+    echo 'MongoDB is up!'
+    mongosh --quiet --eval '
+      try {
+        rs.initiate({_id:"rs0",members:[{_id:0,host:"mongodb-db:27017"}]});
+        print("Replica set initiated");
+      } catch(e) {
+        print("rs.initiate skipped: " + e.message);
+      }
+    '
+    sleep 2
+    if [ -f /init-collections.js ]; then
+      mongosh --quiet < /init-collections.js
+    fi
+    echo 'Init complete'
+    wait
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb-db
+  labels:
+    app: mongodb-db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mongodb-db
+  template:
+    metadata:
+      labels:
+        app: mongodb-db
+    spec:
+      containers:
+      - name: mongodb-db
+        image: mongo:6.0
+        command: ["/bin/bash", "/init-scripts/init-replica.sh"]
+        env:
+        - name: MONGO_INITDB_DATABASE
+          value: "approvalflow"
+        ports:
+        - containerPort: 27017
+        volumeMounts:
+        - name: scripts-volume
+          mountPath: /init-scripts
+        - name: collections-volume
+          mountPath: /init-collections.js
+          subPath: init-collections.js        
+      volumes:
+      - name: scripts-volume
+        configMap:
+          name: mongodb-init-script
+          defaultMode: 0755
+      - name: collections-volume
+        configMap:
+          name: mongodb-init-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-db
+spec:
+  selector:
+    app: mongodb-db
+  ports:
+  - protocol: TCP
+    port: 27017
+    targetPort: 27017

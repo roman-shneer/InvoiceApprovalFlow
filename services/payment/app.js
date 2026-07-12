@@ -1,7 +1,7 @@
 const { DaprServer, DaprClient } = require('@dapr/dapr');
 
 const APP_PORT = process.env.APP_PORT || '8010';
-const DAPR_HOST = process.env.DAPR_HTTP_HOST || '127.0.0.1';
+const DAPR_HOST = process.env.DAPR_HOST || '127.0.0.1';
 const DAPR_PORT = process.env.DAPR_HTTP_PORT || '3500';
 const PUB_SUB = 'approval-pubsub';
 const BUDGET_STORE = 'mongo-budgets';

@@ -206,15 +206,6 @@ app.post('/api/v1/expenses', async (req, res) => {
             createdAt: new Date().toISOString()
         };
 
-        await daprClient.state.save(MONGO_INVOICES_STORE, [
-            {
-                key: trackingId,
-                value: pendingInvoice
-            }
-        ]);
-
-
-
         logMessage('INFO', correlationId, `Transactionally saved invoice and outbox event ${outboxEventId}`);
         await dispatchOutboxEvent(outboxEvent, correlationId);
 
