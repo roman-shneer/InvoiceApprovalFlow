@@ -8,10 +8,15 @@
         "test": "jest --passWithNoTests --roots tests"
     },
     "dependencies": {
-        "@dapr/dapr": "^3.4.0",
-        "dotenv": "^17.4.2",
+        "@dapr/dapr": "^3.0.0",
         "express": "^4.19.2",
-        "ollama": "^0.6.3"
+        "ollama": "^0.5.0",
+        "@langchain/core": "^0.3.40",
+        "@langchain/ollama": "^0.2.0",
+        "langchain": "^0.3.37"
+    },
+    "overrides": {
+        "@langchain/core": "^0.3.40"
     },
     "devDependencies": {
         "jest": "^30.4.2"

@@ -1,36 +1,55 @@
+/**
+ * Hardcoded rule-engine fallback heuristics when LLM/RAG engine fails.
+ * 
+ * @param {Object} invoice - The current invoice data payload
+ * @param {Array} rules - Fallback active rules fetched from the database
+ * @returns {Object} - { recommendation, triggered_rules, reason }
+ */
 function evaluateInvoiceWithAI(invoice, rules) {
     const total = parseFloat(invoice.total || 0);
-    const category = invoice.category || "General";
-    const vendor = invoice.vendor || "Unknown";
+    const category = String(invoice.category || "General").toLowerCase();
+    const vendor = String(invoice.vendor || "Unknown").toLowerCase();
 
     let recommendation = "AUTO_APPROVE";
-    let triggeredRules = [];
+    let triggered_rules = []; // FIXED: Renamed from triggeredRules to match database and test schemas
     let reason = "All automated compliance checks passed successfully.";
 
+    // Convert rule array into a Set of IDs for O(1) matching performance optimization
+    // Normalized to handle variations in DB text casing securely
     const dbRuleIds = new Set(
         rules
-            .filter(r => r.category === category || r.category === "Global rules")
-            .map(r => r.rule_id)
+            .filter(r => {
+                const ruleCat = String(r.category || "").toLowerCase();
+                return ruleCat === category || ruleCat === "global rules";
+            })
+            .map(r => String(r.rule_id).toUpperCase())
     );
 
-    if (dbRuleIds.has("GLOBAL-VENDOR") && ["unknown", "brand-new vendor"].includes(vendor.toLowerCase())) {
+    // 1. Global Vendor Validation Check
+    if (dbRuleIds.has("GLOBAL-VENDOR") && ["unknown", "brand-new vendor", "unverified"].includes(vendor)) {
         return {
             recommendation: "HUMAN_REVIEW",
-            triggeredRules: ["GLOBAL-VENDOR"],
-            reason: `Flagged by GLOBAL-VENDOR: Vendor '${vendor}' is not verified.`
+            triggered_rules: ["GLOBAL-VENDOR"],
+            reason: `Flagged by GLOBAL-VENDOR: Vendor '${invoice.vendor}' is unverified in system database.`
         };
     }
 
-    if (category === "Meals & Entertainment" && dbRuleIds.has("MEAL-02") && total > 500) {
-        recommendation = "HUMAN_REVIEW";
-        triggeredRules.push("MEAL-02");
-        reason = "Violation of MEAL-02: Entertainment expenses exceeding $500 require manual review.";
-    } else if (category === "Travel" && dbRuleIds.has("TRAVEL-02") && total > 1500) {
-        recommendation = "HUMAN_REVIEW";
-        triggeredRules.push("TRAVEL-02");
-        reason = "Hard stop by TRAVEL-02: Travel expenses exceeding $1,500 require manager approval.";
+    // 2. Category Bounds Evaluations
+    if (category.includes("meal") || category.includes("entertainment")) {
+        if (dbRuleIds.has("MEAL-02") && total > 500) {
+            recommendation = "HUMAN_REVIEW";
+            triggered_rules.push("MEAL-02");
+            reason = `Violation of MEAL-02: Total amount $${total} exceeds the allowed $500 entertainment ceiling.`;
+        }
+    } else if (category.includes("travel")) {
+        if (dbRuleIds.has("TRAVEL-02") && total > 1500) {
+            recommendation = "HUMAN_REVIEW";
+            triggered_rules.push("TRAVEL-02");
+            reason = `Violation of TRAVEL-02: Total travel amount $${total} exceeds the strict $1,500 manager limit.`;
+        }
     }
 
-    return { recommendation, triggeredRules, reason };
+    return { recommendation, triggered_rules, reason };
 }
+
 module.exports = { evaluateInvoiceWithAI };
