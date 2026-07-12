@@ -2,7 +2,6 @@ const { Ollama } = require('ollama');
 
 const ollama = new Ollama({ host: 'http://ollama-service:11434' });
 
-
 /**
  * Anonymizes sensitive data in an invoice object.
  * 
@@ -46,28 +45,20 @@ function anonymizeInvoice(invoice) {
     return cleanInvoice;
 }
 
-
 /**
- * Invoice auditing using a local AI model based on live corporate rules
- * @param {Object} invoice — invoice object (total, category, vendor_id, etc.)
- * @param {Array} rules  — rules from PostgreSQL via Dapr
- * @returns {Promise<Object>} — { recommendation: "AUTO_APPROVE"|"HUMAN_REVIEW", reason: "..." }
+ * Invoice auditing using a local AI model backed by a dynamic RAG context window
+ * @param {Object} invoice - invoice object (total, category, vendor, etc.)
+ * @param {String} dynamicPolicyContext - text segments retrieved dynamically from policy documents by the RAG engine
+ * @returns {Promise<Object>} - { recommendation: "AUTO_APPROVE"|"HUMAN_REVIEW"|"REJECT", reason: "..." }
  */
-async function classifyInvoiceWithLocalAI(invoice, rules) {
-    const category = String(invoice.category || '').toLowerCase();
-    const relevantRules = rules.filter(rule => {
-        const ruleCategory = String(rule.category || '').toLowerCase();
-        return ['global rules'].includes(ruleCategory) || ruleCategory.includes(category);
-    });
-    const formattedRules = relevantRules
-        .map((r, index) => `${index + 1}. [${r.rule_id}] Category: ${r.category} -> Requirement: ${r.rule_text}`)
-        .join('\n');
+async function classifyInvoiceWithLocalAI(invoice, dynamicPolicyContext) {
 
+    // Construct system prompt embedding the dynamic text segments fetched via the RAG retrieval cursor
     const systemPrompt = `You are an expert corporate FinOps Compliance Auditor. 
-Your task is to analyze the user's invoice payload against the following active corporate policies.
+Your task is to analyze the user's invoice payload against the following corporate policies extracted dynamically from the company's official handbook.
 
-ACTIVE CORPORATE POLICIES:
-${formattedRules || "No specific rules provided. Follow general financial guidelines."}
+ACTIVE CORPORATE POLICIES (RETRIEVED VIA RAG):
+${dynamicPolicyContext || "No specific policy sections matched the query. Follow general financial guidelines."}
 
 CRITICAL INSTRUCTIONS:
 - Evaluate if the invoice violates any of the active policies (check amounts, category constraints, and vendor names).
@@ -82,7 +73,7 @@ CRITICAL INSTRUCTIONS:
 The JSON object MUST follow this exact schema:
 {
   "recommendation": "AUTO_APPROVE" or "HUMAN_REVIEW",
-  "reason": "Clear English explanation mentioning which specific rule ID was evaluated or violated.",
+  "reason": "Clear English explanation mentioning which specific rule ID or policy segment was evaluated or violated.",
   "confidence": 0.80,
   "triggered_rules": ["RULE-ID-1", "RULE-ID-2"]
 }`;
@@ -91,6 +82,7 @@ The JSON object MUST follow this exact schema:
     const invoiceDetails = anonymizeInvoice(invoice);
     const userPrompt = `Analyze this invoice payload: ` + JSON.stringify(invoiceDetails);
     console.log("UserPrompt:", userPrompt);
+
     try {
         const response = await ollama.chat({
             model: process.env.AI_MODEL_NAME || 'llama3',
@@ -108,24 +100,27 @@ The JSON object MUST follow this exact schema:
 
         let rawContent = response.message.content.trim();
         console.log("Raw AI Response:", rawContent);
-        // FIX 2: Defensive regex to strip markdown block ticks if Llama 3 hallucinates them
+
+        // Defensive regex to strip markdown block ticks if Llama 3 hallucinates them
         if (rawContent.startsWith("```")) {
             rawContent = rawContent.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
         }
 
         const aiResult = JSON.parse(rawContent);
+
         // Fallback guardrail for schema properties validation
         if (!['AUTO_APPROVE', 'HUMAN_REVIEW', 'REJECT'].includes(aiResult.recommendation)) {
             aiResult.recommendation = 'HUMAN_REVIEW';
         }
 
-        if (aiResult.triggered_rules.includes('MEAL-03')) {
+        // Custom override for critical workflow logic constraints
+        if (aiResult.triggered_rules && aiResult.triggered_rules.includes('MEAL-03')) {
             aiResult.recommendation = 'REJECT';
         }
 
         return {
             recommendation: aiResult.recommendation,
-            reason: aiResult.reason || "Evaluated by local AI engine successfully.",
+            reason: aiResult.reason || "Evaluated by local RAG-augmented AI engine successfully.",
             confidence: parseFloat(aiResult.confidence || 0),
             triggered_rules: Array.isArray(aiResult.triggered_rules) ? aiResult.triggered_rules : []
         };
@@ -134,7 +129,7 @@ The JSON object MUST follow this exact schema:
         // Safe failover to human queue if JSON parsing or connection fails
         return {
             recommendation: "HUMAN_REVIEW",
-            reason: `Local AI Analysis failed or timed out: ${err.message}. Forced routing to manual queue.`,
+            reason: `Local RAG AI Analysis failed or timed out: ${err.message}. Forced routing to manual queue.`,
             confidence: 0,
             triggered_rules: []
         };
