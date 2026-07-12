@@ -127,8 +127,7 @@ async function checkStuckInvoices() {
     const invoices = await getPendingInvoices('PROCESSING', 1000);
 
     for (const invoice of invoices) {
-        const trackingId = invoice.tracking_id || invoice.id || "unknown";
-        console.log(`[${trackingId}] Reprocessing pending invoice`);
+        console.log(`[${invoice.tracking_id}] Reprocessing pending invoice`);
         await publishInvoiceNotification(invoice, PUB_SUB_TOPIC);
     }
 }
@@ -163,12 +162,12 @@ async function start() {
         async (eventData) => {
             try {
                 const invoice = eventData && eventData.data ? eventData.data : eventData;
-                const trackingId = invoice.tracking_id || invoice.id || "unknown";
-                console.log(`[${trackingId}] Incoming invoice received via Pub/Sub`);
+                console.log(`[${invoice.tracking_id}] Incoming invoice received via Pub/Sub`);
                 //WILL BE PROCESSED in TOUR startWorkerLoop() function, so we just save it to mongo and return SUCCESS            
                 saveInvoiceToMongo((invoice.status = 'PENDING', invoice)).catch(async (dbErr) => {
                     //if mongo dead - send to pubsub invoice.failed-to-save to retry later
-                    console.error(`[${trackingId}] Failed asynchronous background Mongo save:`, dbErr.message);
+                    console.error(`[${invoice.tracking_id}] Failed asynchronous background Mongo save:`, dbErr.message);
+                    console.log("send publishInvoiceNotification1");
                     publishInvoiceNotification({
                         invoice,
                         error: dbErr.message,
@@ -225,14 +224,13 @@ async function start() {
     await startServerWithRetry();
 
 
-    // Replay any previously stuck PROCESSING invoices
-    try {
-        await checkStuckInvoices();
-    } catch (err) {
-        console.error(`[governance-startup] Failed to replay pending invoices:`, err.message);
-    }
-
+    // Replay any previously stuck PROCESSING invoices   
     if (process.env.NODE_ENV !== 'test') {
+        try {
+            await checkStuckInvoices();
+        } catch (err) {
+            console.error(`[governance-startup] Failed to replay pending invoices:`, err.message);
+        }
         startWorkerLoop();
     }
 
