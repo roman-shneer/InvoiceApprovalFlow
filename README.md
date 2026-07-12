@@ -177,18 +177,6 @@ The benchmark utilizes a fast, line-by-line CSV stream cursor to pipe rows out o
 | <img width="764" height="418" alt="image" src="https://github.com/user-attachments/assets/86cbbece-f003-4cf4-9476-f01aac7d7ce7" /> | <img width="956" height="430" alt="image" src="https://github.com/user-attachments/assets/bee03f32-095d-49e3-a9bc-381e0e923854" /> |
 
 
-
-
----
-
-### 🚀 Visualizing Interactive Reports
-
-You can view complete interactive charts, error trends, and bucketized latency responses right inside your browser without uploading files to external services:
-
-1. Open your local interactive dashboard file located at: [./artillery/report.html](./artillery/report.html)
-2. The report will automatically render the saved performance charts directly in your web browser.
-
-
 ### 🛠️ Execution & Re-running Scenarios
 
 Follow these steps from a Windows PowerShell or terminal console to recreate the load testing pipeline profile:
