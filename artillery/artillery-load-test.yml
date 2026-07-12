@@ -1,0 +1,55 @@
+config:
+  target: "http://localhost:8001"
+  phases:
+    - duration: 60
+      arrivalRate: 10
+      name: "Ramping up load"
+    - duration: 120
+      arrivalRate: 30
+      name: "Sustained peak workload"
+  defaults:
+    headers:
+      Authorization: "Bearer {{ $processEnv.AUTH_TOKEN }}"
+  
+  
+  payload:
+    path: "./fixtures.csv"
+    fields:
+      - "id"
+      - "submitter"
+      - "department"
+      - "vendor"
+      - "vendorKnown"
+      - "invoiceNumber"
+      - "currency"
+      - "category"
+      - "attendees"
+      - "lineItems"
+      - "taxAmount"
+      - "total"
+      - "receiptPresent"
+      - "date"
+      - "notes"
+    order: random
+
+scenarios:
+  - name: "Submit corporate invoices from 1M CSV rows"
+    flow:
+      - post:
+          url: "/api/v1/expenses"
+          json:
+            id: "{{ id }}"
+            submitter: "{{ submitter }}"
+            department: "{{ department }}"
+            vendor: "{{ vendor }}"
+            vendorKnown: "{{ vendorKnown }}"
+            invoiceNumber: "{{ invoiceNumber }}"
+            currency: "{{ currency }}"
+            category: "{{ category }}"
+            attendees: "{{ attendees }}"           
+            lineItems: "{{ lineItems }}"
+            taxAmount: "{{ taxAmount }}"
+            total: "{{ total }}"
+            receiptPresent: "{{ receiptPresent }}"
+            date: "{{ date }}"
+            notes: "{{ notes }}"
