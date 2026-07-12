@@ -154,3 +154,54 @@ kubectl get service
 kubectl port-forward service/management-service 8080:80
 
 ```
+
+
+## Load & Performance Testing (Artillery)
+
+This architecture includes an automated performance testing suite powered by **Artillery** to validate system throughput, verify token authentication boundaries, and stress-test the Ingestion Gateway under high concurrency. 
+
+The benchmark utilizes a fast, line-by-line CSV stream cursor to pipe rows out of a 1,000,000 unique record mock data fixture without memory layout overhead.
+
+### 📊 Performance Summary & Key Metrics
+
+*   **Total Requests Submitted**: 4,200
+*   **Successful Ingestions (HTTP 202 Accepted)**: 4,057
+*   **Mean Response Latency**: 15.1 ms (p95: 34.1 ms, median: 8.9 ms)
+*   **Network Socket Timeouts (`ERR_SOCKET_TIMEOUT`)**: 139 *(Observed during the peak workload phase at 15 req/sec due to local cluster network overhead).*
+
+#### Load charts and telemetry
+| Overview | Socket Timeouts |
+| :---: | :---: |
+| <img width="764" height="326" alt="image" src="https://github.com/user-attachments/assets/9de5a624-c35d-4c9c-99e0-784413ae388d" /> | <img width="761" height="326" alt="image" src="https://github.com/user-attachments/assets/95dda164-df38-43f9-8033-71962a277fe9" /> |
+| **Response Latency** | **HTTP 202 Ingestion Throughput** |
+| <img width="764" height="418" alt="image" src="https://github.com/user-attachments/assets/86cbbece-f003-4cf4-9476-f01aac7d7ce7" /> | <img width="956" height="430" alt="image" src="https://github.com/user-attachments/assets/bee03f32-095d-49e3-a9bc-381e0e923854" /> |
+
+
+
+
+---
+
+### 🚀 Visualizing Interactive Reports
+
+You can view complete interactive charts, error trends, and bucketized latency responses right inside your browser without uploading files to external services:
+
+1. Open your local interactive dashboard file located at: [./artillery/report.html](./artillery/report.html)
+2. The report will automatically render the saved performance charts directly in your web browser.
+
+
+### 🛠️ Execution & Re-running Scenarios
+
+Follow these steps from a Windows PowerShell or terminal console to recreate the load testing pipeline profile:
+
+1. **Generate Mock Data Fixtures**:
+   Generate a flat dataset of 1,000,000 unique, structurally valid invoices containing pre-compiled microservice payload schemes:
+   ```powershell
+   node ./artillery/generate-fixtures.js
+   ```
+
+2. **Execute Load Profiling Session**:
+   Load authorization credentials directly out of your local secure configurations layer (`.env`) and inject them natively into the virtual user request headers stream:
+   ```powershell
+   # Requires dotenv-cli globally installed (npm install -g dotenv-cli) and add to .env AUTH_TOKEN of submitter
+   dotenv -- artillery run --output ./artillery/report.json ./artillery/artillery-load-test.yml
+   ```
