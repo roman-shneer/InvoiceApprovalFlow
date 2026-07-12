@@ -5,6 +5,7 @@ const { checkHardStops } = require('./engines/checkHardStops');
 const { applyAutonomyOverride } = require('./engines/applyAutonomyOverride');
 const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
 const { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices } = require('./resources/db');
+const { initRagEngine, retrieveRelevantPolicies } = require('./resources/ragEngine');
 
 const appPort = "8002";
 const daprHost = process.env.DAPR_HOST || "127.0.0.1";
@@ -45,15 +46,16 @@ async function processInvoice(trackingId, invoice) {
 
         // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)
         const hardStop = checkHardStops(invoice, activeRules, fxRates);
-
-        // 2. Local AI Inference and Rule Engine Fallback Classification
         let aiResult;
         try {
-            aiResult = await classifyInvoiceWithLocalAI(invoice, activeRules);
+            const dynamicPolicyContext = await retrieveRelevantPolicies(invoice);
+            console.log(`[${trackingId}] RAG Context Retrieved:\n${dynamicPolicyContext}`);
+            aiResult = await classifyInvoiceWithLocalAI(invoice, dynamicPolicyContext);
         } catch (err) {
-            aiResult = evaluateInvoiceWithAI(invoice, activeRules);
+            aiResult = evaluateInvoiceWithAI(invoice, await getPolicies());
             console.log(`[${trackingId}] ERROR: AI failure context: ${err.message}. Triggered static heuristics.`);
         }
+
 
         console.log(`[${trackingId}] AI Evaluation Result: ${JSON.stringify(aiResult)}`);
 
@@ -156,6 +158,8 @@ async function startServerWithRetry() {
 
 async function start() {
 
+    await initRagEngine(); // <--- start indexing policies at startup
+
     await server.pubsub.subscribe(
         PUB_SUB_NAME,
         PUB_SUB_TOPIC,
@@ -167,7 +171,6 @@ async function start() {
                 saveInvoiceToMongo((invoice.status = 'PENDING', invoice)).catch(async (dbErr) => {
                     //if mongo dead - send to pubsub invoice.failed-to-save to retry later
                     console.error(`[${invoice.tracking_id}] Failed asynchronous background Mongo save:`, dbErr.message);
-                    console.log("send publishInvoiceNotification1");
                     publishInvoiceNotification({
                         invoice,
                         error: dbErr.message,
@@ -222,6 +225,10 @@ async function start() {
     );
 
     await startServerWithRetry();
+
+
+
+
 
 
     // Replay any previously stuck PROCESSING invoices   
