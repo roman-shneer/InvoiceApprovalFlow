@@ -9,7 +9,7 @@ static_resources:
         - filters:
             - name: envoy.filters.network.http_connection_manager
               typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                "@type": "type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager"
                 stat_prefix: ingress_http
                 route_config:
                   name: local_route
@@ -22,33 +22,9 @@ static_resources:
                           route:
                             cluster: ingestion_cluster
                 http_filters:
-                  - name: envoy.filters.http.local_ratelimit
-                    typed_config:
-                      "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-                      stat_prefix: http_local_rate_limiter
-                      token_bucket:
-                        max_tokens: 5
-                        tokens_per_fill: 5
-                        fill_interval: 1s
-                      filter_enabled:
-                        runtime_key: local_rate_limit_enabled
-                        default_value:
-                          numerator: 100
-                          denominator: HUNDRED
-                      filter_enforced:
-                        runtime_key: local_rate_limit_enforced
-                        default_value:
-                          numerator: 100
-                          denominator: HUNDRED
-                      response_headers_to_add:
-                        - header:
-                            key: x-envoy-ratelimited
-                            value: "true"
-                          append_action: OVERWRITE_IF_EXISTS_OR_ADD
                   - name: envoy.filters.http.router
                     typed_config:
-                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
-
+                      "@type": "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router"
   clusters:
     - name: ingestion_cluster
       connect_timeout: 0.25s

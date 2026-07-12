@@ -1,0 +1,229 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: final-infrastructure-config
+data:
+  pubsub.yaml: |
+    apiVersion: dapr.io/v1alpha1
+    kind: Component
+    metadata:
+      name: approval-pubsub
+    spec:
+      type: pubsub.redis
+      version: v1
+      metadata:
+      - name: redisHost
+        value: redis:6379
+      - name: redisPassword
+        value: "your-redis-password"
+      - name: consumerID
+        value: "approval-flow-group2"
+      - name: enableTLS
+        value: "false"
+      - name: rawPayload
+        value: "true"
+      - name: contentType
+        value: "application/json"
+
+  state.yaml: |
+    apiVersion: dapr.io/v1alpha1
+    kind: Component
+    metadata:
+      name: mongo-invoices
+    spec:
+      type: state.mongodb
+      version: v1
+      metadata:
+      - name: host
+        value: "mongodb-db:27017"
+      - name: databaseName
+        value: "approvalflow"
+      - name: collectionName
+        value: "invoices"
+
+  approval-state.yaml: |
+    apiVersion: dapr.io/v1alpha1
+    kind: Component
+    metadata:
+      name: approval-state
+    spec:
+      type: state.redis
+      version: v1
+      metadata:
+      - name: redisHost
+        value: redis:6379
+      - name: redisPassword
+        value: "SuperSecretPassword123"
+      - name: actorStateStore
+        value: "false"
+
+  mongo-state.yaml: |
+    apiVersion: dapr.io/v1alpha1
+    kind: Component
+    metadata:
+      name: mongo-state
+    spec:
+      type: state.mongodb
+      version: v1
+      metadata:
+      - name: host
+        value: "mongodb-db:27017"
+      - name: databaseName
+        value: "approvalflow"
+      - name: collectionName
+        value: "ingestion_store"
+
+  mongo-policies.yaml: |
+    apiVersion: dapr.io/v1alpha1
+    kind: Component
+    metadata:
+      name: mongo-policies
+    spec:
+      type: state.mongodb
+      version: v1
+      metadata:
+      - name: host
+        value: "mongodb-db:27017"
+      - name: databaseName
+        value: "approvalflow"
+      - name: collectionName
+        value: "policies"
+
+  mongo-fx-rates.yaml: |
+    apiVersion: dapr.io/v1alpha1
+    kind: Component
+    metadata:
+      name: mongo-fx-rates
+    spec:
+      type: state.mongodb
+      version: v1
+      metadata:
+      - name: host
+        value: "mongodb-db:27017"
+      - name: databaseName
+        value: "approvalflow"
+      - name: collectionName
+        value: "fxRates"
+
+  mongo-budgets.yaml: |
+    apiVersion: dapr.io/v1alpha1
+    kind: Component
+    metadata:
+      name: mongo-budgets
+    spec:
+      type: state.mongodb
+      version: v1
+      metadata:
+      - name: host
+        value: "mongodb-db:27017"
+      - name: databaseName
+        value: "approvalflow"
+      - name: collectionName
+        value: "budgets"
+
+  mongo-users.yaml: |
+    apiVersion: dapr.io/v1alpha1
+    kind: Component
+    metadata:
+      name: mongo-users
+    spec:
+      type: state.mongodb
+      version: v1
+      metadata:
+      - name: host
+        value: "mongodb-db:27017"
+      - name: databaseName
+        value: "approvalflow"
+      - name: collectionName
+        value: "users"
+
+  envoy.yaml: |
+    static_resources:
+      listeners:
+        - name: listener_0
+          address:
+            socket_address:
+              address: 0.0.0.0
+              port_value: 8000
+          filter_chains:
+            - filters:
+                - name: envoy.filters.network.http_connection_manager
+                  typed_config:
+                    "@type": "type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager"
+                    stat_prefix: ingress_http
+                    route_config:
+                      name: local_route
+                      virtual_hosts:
+                        - name: local_service
+                          domains: ["*"]
+                          routes:
+                            - match:
+                                prefix: "/api/v1/expenses"
+                              route:
+                                cluster: ingestion_cluster
+                    http_filters:
+                      - name: envoy.filters.http.router
+                        typed_config:
+                          "@type": "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router"
+      clusters:
+        - name: ingestion_cluster
+          connect_timeout: 0.25s
+          type: LOGICAL_DNS
+          dns_lookup_family: V4_ONLY
+          lb_policy: ROUND_ROBIN
+          load_assignment:
+            cluster_name: ingestion_cluster
+            endpoints:
+              - lb_endpoints:
+                  - endpoint:
+                      address:
+                        socket_address:
+                          address: ingestion-service
+                          port_value: 8001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  labels:
+    app: api-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      containers:
+      - name: api-gateway
+        image: envoyproxy/envoy:v1.28.0
+        command: ["/usr/local/bin/envoy"]
+        args: ["-c", "/etc/envoy-custom/envoy.yaml"]
+        ports:
+        - containerPort: 8000
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/envoy-custom
+      volumes:
+      - name: config-volume
+        configMap:
+          name: final-infrastructure-config
+          items:
+          - key: envoy.yaml
+            path: envoy.yaml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+spec:
+  type: LoadBalancer
+  selector:
+    app: api-gateway
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 8000

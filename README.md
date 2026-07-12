@@ -111,3 +111,46 @@ The system comes pre-seeded with 3 explicit user roles inside MongoDB to verify 
 *  **Enforced Posture:**  If detected rule **MEAL-3** (alcohol) status enforced to **REJECT** instead **HUMAN_REVIEW**.
 *  **Justification Record:** No unauthorized threshold tuning was performed in this release. Full risk analysis regarding latency vs. human review costs is documented under [docs/PRODUCT-DILEMMA.md](docs/PRODUCT-DILEMMA.md).
 
+## Local Development with Kubernetes (Windows)
+
+This project uses Kubernetes for local development and orchestration. Before proceeding, ensure you have `kubectl` installed and a local cluster running (via **Docker Desktop** or **Minikube**).
+
+### 1. Configure Local Secrets
+
+Production secrets are kept out of source control. For local development on `localhost`, we use mock/fake credentials:
+
+1. Duplicate the template file to create your local configurations:
+   ```powershell
+   copy k8s/secrets.yaml.template k8s/secrets.yaml
+   ```
+
+### 2. Deploy to the Cluster
+
+1. Verify that `kubectl` is successfully connected to your running Windows cluster:
+   ```powershell
+   kubectl cluster-info
+   ```
+2. Navigate to the root directory (`C:\projects\zion\InvoiceApprovalFlow`) and apply all Kubernetes manifests:
+   ```powershell
+   kubectl apply -f .
+   ```
+   *(Note: If your manifests live inside a dedicated folder, use `kubectl apply -f ./k8s/` instead).*
+
+### 3. Verify Deployment Status
+
+Monitor the initialization of your application pods and networking components using these commands:
+
+```powershell
+# List all running pods (containers)
+kubectl get pods
+
+# Stream pod status changes in real-time (Press Ctrl+C to exit)
+kubectl get pods -w
+
+# Check active networking services
+kubectl get service
+
+### Forward port to local machine ###
+kubectl port-forward service/management-service 8080:80
+
+```

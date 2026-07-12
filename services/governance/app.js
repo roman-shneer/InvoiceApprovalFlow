@@ -7,7 +7,7 @@ const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
 const { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices } = require('./resources/db');
 
 const appPort = "8002";
-const daprHost = "127.0.0.1";
+const daprHost = process.env.DAPR_HOST || "127.0.0.1";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
 const PUB_SUB_NAME = "approval-pubsub";
 const PUB_SUB_TOPIC = 'invoice.submitted'
@@ -133,6 +133,29 @@ async function checkStuckInvoices() {
         await processInvoice(trackingId, invoice);
     }
 }
+
+async function startServerWithRetry() {
+    const maxAttempts = Number(process.env.DAPR_START_MAX_ATTEMPTS || 30);
+    const delayMs = Number(process.env.DAPR_START_RETRY_DELAY_MS || 2000);
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            await server.start();
+            return;
+        } catch (err) {
+            const msg = err && err.message ? err.message : String(err);
+            const isSidecarBootRace = msg.includes('DAPR_SIDECAR_COULD_NOT_BE_STARTED');
+
+            if (!isSidecarBootRace || attempt === maxAttempts) {
+                throw err;
+            }
+
+            console.warn(`[governance-startup] Dapr sidecar not ready (attempt ${attempt}/${maxAttempts}). Retrying in ${delayMs}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+    }
+}
+
 async function start() {
     await server.pubsub.subscribe(
         "approval-pubsub",
@@ -152,7 +175,7 @@ async function start() {
         }
     );
 
-    await server.start();
+    await startServerWithRetry();
 
     // Replay any previously stuck PROCESSING invoices
     try {

@@ -72,7 +72,7 @@ services:
     volumes:
       - ./gateway/envoy.yaml:/etc/envoy/envoy.yaml
     ports:
-      - "8000:8000"
+      - "8008:8000"
     depends_on:
       - ingestion-service
     networks:

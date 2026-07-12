@@ -1,0 +1,271 @@
+### Ingestion Service ###
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion-service
+  labels:
+    app: ingestion-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingestion-service
+  template:
+    metadata:
+      labels:
+        app: ingestion-service
+    spec:
+      containers:
+      - name: app
+        image: ingestion-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8001
+        env:
+        - name: PORT
+          value: "8001"
+        - name: DAPR_HOST
+          value: "127.0.0.1"
+        - name: DAPR_PORT
+          value: "3500"
+      - name: dapr-sidecar
+        image: ghcr.io/dapr/daprd:1.15.4
+        command: ["/daprd"]
+        args: ["--app-id", "ingestion-service", "--app-port", "8001", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components"]
+        volumeMounts:
+        - name: dapr-components-vol
+          mountPath: /dapr/components
+      volumes:
+      - name: dapr-components-vol
+        projected:
+          sources:
+          - configMap:
+              name: pubsub-config
+          - configMap:
+              name: state-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingestion-service
+spec:
+  selector:
+    app: ingestion-service
+  ports:
+  - name: app-port
+    protocol: TCP
+    port: 8001
+    targetPort: 8001
+---
+### Governance & AI Service ###
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: governance-service
+  labels:
+    app: governance-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: governance-service
+  template:
+    metadata:
+      labels:
+        app: governance-service
+    spec:
+      containers:
+      - name: app
+        image: governance-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8002
+        env:
+        - name: APP_PORT
+          value: "8002"
+        - name: DAPR_HTTP_HOST
+          value: "127.0.0.1"
+        - name: DAPR_HTTP_PORT
+          value: "3500"
+        - name: MONGO_DB
+          valueFrom:
+            configMapKeyRef:
+              name: approval-config
+              key: mongo-db-name
+        - name: AI_MODEL_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: approval-config
+              key: ai-model-name
+        - name: OLLAMA_HOST
+          value: "http://ollama-service:11434"
+      - name: dapr-sidecar
+        image: ghcr.io/dapr/daprd:1.15.4
+        command: ["/daprd"]
+        args: ["--app-id", "governance-service", "--app-port", "8002", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components"]
+        volumeMounts:
+        - name: dapr-components-vol
+          mountPath: /dapr/components
+      volumes:
+      - name: dapr-components-vol
+        projected:
+          sources:
+          - configMap:
+              name: pubsub-config
+          - configMap:
+              name: state-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: governance-service
+spec:
+  selector:
+    app: governance-service
+  ports:
+  - name: app-port
+    protocol: TCP
+    port: 8002
+    targetPort: 8002
+---
+### Management UI Service ###
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: management-service
+  labels:
+    app: management-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: management-service
+  template:
+    metadata:
+      labels:
+        app: management-service
+    spec:
+      containers:
+      - name: app
+        image: management-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 80
+        env:
+        - name: APP_PORT
+          value: "80"
+        - name: DAPR_HTTP_HOST
+          value: "127.0.0.1"
+        - name: DAPR_HTTP_PORT
+          value: "3500"
+        - name: INVOICE_URL
+          value: "http://api-gateway:8000/api/v1/expenses"
+        - name: MONGO_DB
+          valueFrom:
+            configMapKeyRef:
+              name: approval-config
+              key: mongo-db-name
+        - name: DEFAULT_USER_ADMIN_USERNAME
+          value: "admin"
+        - name: DEFAULT_USER_ADMIN_PASSWORD
+          value: "admin"
+        - name: DEFAULT_USER_APPROVER_USERNAME
+          value: "approver"
+        - name: DEFAULT_USER_APPROVER_PASSWORD
+          value: "approver"
+        - name: DEFAULT_USER_SUBMITTER_USERNAME
+          value: "submitter"
+        - name: DEFAULT_USER_SUBMITTER_PASSWORD
+          value: "submitter"
+      - name: dapr-sidecar
+        image: ghcr.io/dapr/daprd:1.15.4
+        command: ["/daprd"]
+        args: ["--app-id", "management-service", "--app-port", "80", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components"]
+        volumeMounts:
+        - name: dapr-components-vol
+          mountPath: /dapr/components
+      volumes:
+      - name: dapr-components-vol
+        projected:
+          sources:
+          - configMap:
+              name: pubsub-config
+          - configMap:
+              name: state-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: management-service
+spec:
+  selector:
+    app: management-service
+  ports:
+  - name: app-port
+    protocol: TCP
+    port: 80
+    targetPort: 80
+---
+### Payment Service ###
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  labels:
+    app: payment-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+    spec:
+      containers:
+      - name: app
+        image: payment-service:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8010
+        env:
+        - name: APP_PORT
+          value: "8010"
+        - name: DAPR_HTTP_HOST
+          value: "127.0.0.1"
+        - name: DAPR_HTTP_PORT
+          value: "3500"
+        - name: MONGO_DB
+          valueFrom:
+            configMapKeyRef:
+              name: approval-config
+              key: mongo-db-name
+      - name: dapr-sidecar
+        image: ghcr.io/dapr/daprd:1.15.4
+        command: ["/daprd"]
+        args: ["--app-id", "payment-service", "--app-port", "8010", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components"]
+        volumeMounts:
+        - name: dapr-components-vol
+          mountPath: /dapr/components
+      volumes:
+      - name: dapr-components-vol
+        projected:
+          sources:
+          - configMap:
+              name: pubsub-config
+          - configMap:
+              name: state-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+spec:
+  selector:
+    app: payment-service
+  ports:
+  - name: app-port
+    protocol: TCP
+    port: 8010
+    targetPort: 8010
