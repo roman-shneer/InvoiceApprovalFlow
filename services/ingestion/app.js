@@ -147,6 +147,7 @@ app.post('/api/v1/expenses', async (req, res) => {
         const category = body.category || 'General';
 
         const eventPayload = {
+            id: body.id,
             idempotency_key: idempotencyKey,
             correlation_id: correlationId,
             submitted_at: new Date().toISOString(),
