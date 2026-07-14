@@ -1,12 +1,14 @@
 import time
 from dapr.clients import DaprClient
+from datetime import datetime, timezone
 from resources.run_invoice_agent import run_invoice_agent
 from engines.deterministic_fix import deterministic_fix
 import time
 import json 
 import logging
+from datetime import timedelta
 
-# Отключаем подробную трассировку HTTP-запросов и ответов
+
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("ollama").setLevel(logging.WARNING)
@@ -28,31 +30,36 @@ def publish_invoice_processed(invoice_data: dict, topic_name:str="invoice.proces
     except Exception as e:
         print(f"❌ [DAPR PUBLISH ERROR] Failed to publish processed invoice {invoice_data.get('id')}: {e}")
 
-def query_invoices_by_status(status: str, limit: int = 10):
-   
+def query_invoices_by_status(limit: int = 1):    
+    current_time_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    
     query_definition = {
         "filter": {
-            "EQ": {
-                "status": status
-            }
+            "OR": [
+                {
+                    "EQ": { "status": "PENDING" }
+                },
+                {
+                    "AND": [
+                        { "EQ": { "status": "PROCESSING" } },
+                        { "LT": { "lock_until": current_time_ms } }
+                    ]
+                }
+            ]
         },
-        "page": {
-            "limit": limit
-        },
-        "sort": [
-            {
-                "key": "created_at",
-                "order": "ASC"
-            }
-        ]
+        "page": { "limit": limit },
+        "sort": [{ "key": "created_at", "order": "ASC" }]
     }
     
     with DaprClient() as client:
         response = client.query_state(
-            store_name="mongo-invoices",           
+            store_name="mongo-invoices",
             query=json.dumps(query_definition)
-        )                                    
+        )
         return response.results
+    
+    
+    
 
 def save_updated_invoice(invoice_key: str, processed_invoice: dict) -> bool:    
     print(f"💾 [DAPR SAVE] Synchronizing invoice {invoice_key} with database...")    
@@ -74,25 +81,31 @@ def save_updated_invoice(invoice_key: str, processed_invoice: dict) -> bool:
 def run_worker():       
     print("run_worker started...") 
     while True:        
-        invoices=query_invoices_by_status("PENDING",1)
+        invoices=query_invoices_by_status(1)
         print(f"Check Invoices: {len(invoices)}")
         if len(invoices)>0:
             for invoice in invoices:
                 
                 invoice_data=json.loads(invoice.value.decode('utf-8'))
+                now = datetime.now(timezone.utc)
+                lock_datetime = now + timedelta(minutes=5)
+                lock_timestamp_ms = int(lock_datetime.timestamp() * 1000)
                 invoice_data["status"]="PROCESSING"
+                invoice_data["lock_until"] = lock_timestamp_ms                
                 save_updated_invoice(invoice.key, invoice_data)
+                
                 publish_invoice_processed(invoice_data, topic_name="invoice.processing") 
                 print(f" Processing invoice {invoice.key} with status {invoice_data.get('status')}...")
-                result = run_invoice_agent(invoice_data)
+                processed_invoice = run_invoice_agent(invoice_data)
                 
-                if result.get("status") == "AUTO_APPROVE":
-                    result = deterministic_fix(result)
-
-                save_updated_invoice(invoice.key, result)
-                publish_invoice_processed(result)
-                if result.get("status") == "AUTO_APPROVE":
-                    publish_invoice_processed(result, topic_name="payment.requested")
+                if processed_invoice.get("status") == "AUTO_APPROVE":
+                    processed_invoice = deterministic_fix(processed_invoice)
+                
+                save_updated_invoice(invoice.key, processed_invoice)
+                
+                publish_invoice_processed(processed_invoice)
+                if processed_invoice.get("status") == "AUTO_APPROVE":
+                    publish_invoice_processed(processed_invoice, topic_name="payment.requested")
             time.sleep(1) 
         else:          
             time.sleep(5)  # Sleep for 5 seconds before checking again                 

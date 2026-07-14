@@ -62,7 +62,7 @@ def run_invoice_agent(invoice_data: dict) -> dict:
     updated_invoice = json.loads(json.dumps(invoice_data))
     
     final_result = asyncio.run(_execute_agent_workflow(updated_invoice))
-    
+    print("FINAL RESULT ",final_result)
     recommendation = final_result.get("recommendation", "HUMAN_REVIEW").upper()
     if "APPROVE" in recommendation:
         final_status = "AUTO_APPROVE"

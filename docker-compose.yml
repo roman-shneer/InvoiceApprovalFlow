@@ -173,6 +173,7 @@ services:
       - ./ollama_data:/root/.ollama
       - ./docs/policy.md:/app/docs/policy.md
       - ./sample-invoices.json:/app/docs/sample-invoices.json
+
     networks:
       - approval-flow-net
 
@@ -190,26 +191,8 @@ services:
     volumes:
       - "./dapr/components:/dapr/components"
       - "./dapr/:/dapr/"
+
     network_mode: "service:ai-service"
-    #ollama-service:
-    #  image: ollama/ollama:latest
-    #  ports:
-    #    - "11434:11434"
-    #  volumes:
-    #    - ./ollama_data:/root/.ollama
-    # networks:
-    #    - approval-flow-net
-
-    ### Ollama model puller ###
-    #ollama-model-puller:
-    #image: curlimages/curl:latest
-    #networks:
-    #  - approval-flow-net
-    #depends_on:
-    #  - ollama-service
-    #restart: "no"
-    #entrypoint: [ "sh", "-c", "until curl -s http://ollama-service:11434/api/tags > /dev/null; do echo 'Waiting for Ollama...'; sleep 5; done; echo 'Ollama is up! Pulling target model...'; curl -X POST http://ollama-service:11434/api/pull -d \"{\\\"name\\\": \\\"${AI_MODEL_NAME}\\\"}\"" ]
-
     ### Management UI Service ###
   management-service:
     build:

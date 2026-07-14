@@ -138,7 +138,7 @@ You MUST return your response as a single, strict JSON object following this exa
 
        
         recommendation = str(rag_clean.get("recommendation", "HUMAN_REVIEW")).upper()
-        
+        print("recommendation",recommendation)
         if "APPROVE" in recommendation:
             final_status = "AUTO_APPROVE"
         elif "REJECT" in recommendation:
