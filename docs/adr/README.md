@@ -9,7 +9,7 @@ This index documents the historical context, concrete decisions, and architectur
 | **[ADR 0001](0001-mongodb-core.md)** | Core NoSQL Storage Selection (MongoDB Replica Set) | `Accepted` | Document Store NoSQL |
 | **[ADR 0002](0002-ingestion-nodejs.md)** | Ingestion Service Technology Stack Realignment to Node.js | `Accepted` | Ingestion (Node.js Express) |
 | **[ADR 0003](0003-rate-limiting.md)** | Declarative Traffic Control and Rate Limiting via Dapr Middleware | `Accepted` | Traffic Management / Security |
-| **[ADR 0004](0004-governance-ai.md)** | Hybrid Decision-Making Architecture | `Accepted` | Governance (Node.js Engine) |
+| **[ADR 0004](0004-asynchronous-invoice-processing-pipeline.md)** | Asynchronous Invoice Processing via PENDING State Delegation | `Accepted` | Governance (Node.js) & AI Service (Python) |
 | **[ADR 0005](0005-ollama-llama3.md)** | Hosting Local LLM Infrastructure via Ollama | `Accepted` | Offline AI Subsystem |
 | **[ADR 0006](0006-management-ui.md)** | Architecture for Management Backoffice Service | `Accepted` | Backoffice (Node/Vue3) |
 | **[ADR 0007](0007-dapr-adoption.md)** | Adoption of Dapr for Microservice Orchestration | `Accepted` | System Mesh / Sidecar |
