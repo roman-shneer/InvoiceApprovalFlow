@@ -5,22 +5,23 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 ```text
 🗺️ Repository Structure
 ├── dapr/
-│   ├── components/                  # Dapr Component Manifests (State, Pub/Sub, Middleware)
-│   └── config.yaml                  # Global Dapr Configuration (Tracing & Pipelines)
+│   ├── components/                                             # Dapr Component Manifests (State, Pub/Sub, Middleware)
+│   └── config.yaml                                             # Global Dapr Configuration (Tracing & Pipelines)
 ├── gateway/
-│   └── envoy.yaml                   # Envoy Proxy API Gateway Config
+│   └── envoy.yaml                                              # Envoy Proxy API Gateway Config
 ├── services/
-│   ├── ingestion/                   # Ingestion Microservice Suite (Node.js Express)
-│   ├── governance/                  # Compliance & Rules Engine Agent (Node.js)
-│   ├── payment/                     # Financial Settlement Node (Node.js)
-│   └── management/                  # Backoffice Administration Panel (Node.js + Vue 3)
+│   ├── ingestion/                                              # Ingestion Microservice Suite (Node.js Express)
+│   ├── governance/                                             # Compliance & Rules Ingestion Gate (Node.js)
+│   ├── ai-service/                                             # Asynchronous Compliance & RAG Audit Worker (Python)
+│   ├── payment/                                                # Financial Settlement Node (Node.js)
+│   └── management/                                             # Backoffice Administration Panel (Node.js + Vue 3)
 ├── docs/
-│   ├── adr/                         # Architecture Decision Records
-│   │   ├── README.md                # ADR Index & Table of Contents
-│   │   ├── 0001-mongodb-core.md     # Core NoSQL Storage Selection (MongoDB Replica Set)
-│   │   ├── 0002-ingestion-nodejs.md # High-Throughput Ingestion Framework (Node.js Express)
-│   │   ├── 0003-rate-limiting.md    # Declarative Traffic Control via Envoy Gateway
-│   │   ├── 0004-governance-ai.md    # Hybrid Rules Engine & Local LLM Integration
+│   ├── adr/                                                    # Architecture Decision Records
+│   │   ├── README.md                                           # ADR Index & Table of Contents
+│   │   ├── 0001-mongodb-core.md                                # Core NoSQL Storage Selection (MongoDB Replica Set)
+│   │   ├── 0002-ingestion-nodejs.md                            # High-Throughput Ingestion Framework (Node.js Express)
+│   │   ├── 0003-rate-limiting.md                               # Declarative Traffic Control via Envoy Gateway
+│   │   ├── 0004-asynchronous-invoice-processing-pipeline.md    # Hybrid Rules Engine & Local LLM Integration
 │   │   ├── 0005-ollama-llama3.md    # Private Offline LLM Infrastructure (Docker Loop)
 │   │   ├── 0006-management-ui.md    # Backoffice System Topology (Node.js + Vue 3)
 │   │   ├── 0007-dapr-adoption.md    # Sidecar Orchestration & Distributed System Abstraction
