@@ -156,29 +156,61 @@ services:
       dapr-placement:
         condition: service_started
     network_mode: "service:governance-service"
-
-  ### Ollama service ###
-  ollama-service:
-    image: ollama/ollama:latest
+    ### Ollama service ###
+  ai-service:
+    build:
+      context: ./services/ai-service
+      dockerfile: Dockerfile
+    container_name: ai-service
     ports:
       - "11434:11434"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - AI_MODEL_NAME=${AI_MODEL_NAME}
+      - DAPR_GRPC_PORT=50001
     volumes:
       - ./ollama_data:/root/.ollama
+      - ./docs/policy.md:/app/docs/policy.md
+      - ./sample-invoices.json:/app/docs/sample-invoices.json
     networks:
       - approval-flow-net
 
-  ### Ollama model puller ###
-  ollama-model-puller:
-    image: curlimages/curl:latest
-    networks:
-      - approval-flow-net
+  ai-service-dapr-sidecar:
+    image: "ghcr.io/dapr/daprd:1.15.4"
+    container_name: ai-service-dapr-sidecar
     depends_on:
-      - ollama-service
-    restart: "no"
-    #entrypoint: [ "sh", "-c", "until curl -s http://ollama-service:11434/api/tags > /dev/null; do echo 'Waiting for Ollama...'; sleep 5; done; echo 'Ollama is up! Pulling llama3...'; curl -X POST http://ollama-service:11434/api/pull -d '{\"name\": \"llama3\"}'" ]
-    entrypoint: [ "sh", "-c", "until curl -s http://ollama-service:11434/api/tags > /dev/null; do echo 'Waiting for Ollama...'; sleep 5; done; echo 'Ollama is up! Pulling target model...'; curl -X POST http://ollama-service:11434/api/pull -d \"{\\\"name\\\": \\\"${AI_MODEL_NAME}\\\"}\"" ]
+      mongodb-db:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+      dapr-placement:
+        condition: service_started
+    command: [ "/daprd", "--app-id", "ai-service", "--app-port", "5001", "--app-protocol", "grpc", "--dapr-grpc-port", "50001", "--components-path", "/dapr/components" ]
+    volumes:
+      - "./dapr/components:/dapr/components"
+      - "./dapr/:/dapr/"
+    network_mode: "service:ai-service"
+    #ollama-service:
+    #  image: ollama/ollama:latest
+    #  ports:
+    #    - "11434:11434"
+    #  volumes:
+    #    - ./ollama_data:/root/.ollama
+    # networks:
+    #    - approval-flow-net
 
-  ### Management UI Service ###
+    ### Ollama model puller ###
+    #ollama-model-puller:
+    #image: curlimages/curl:latest
+    #networks:
+    #  - approval-flow-net
+    #depends_on:
+    #  - ollama-service
+    #restart: "no"
+    #entrypoint: [ "sh", "-c", "until curl -s http://ollama-service:11434/api/tags > /dev/null; do echo 'Waiting for Ollama...'; sleep 5; done; echo 'Ollama is up! Pulling target model...'; curl -X POST http://ollama-service:11434/api/pull -d \"{\\\"name\\\": \\\"${AI_MODEL_NAME}\\\"}\"" ]
+
+    ### Management UI Service ###
   management-service:
     build:
       context: .

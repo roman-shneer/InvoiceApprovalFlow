@@ -1,0 +1,11 @@
+pydantic==2.9.2
+pytest==8.2.2
+numpy==2.0.0
+scikit-learn==1.5.0
+dapr==1.15.0
+dapr-ext-grpc==1.15.0
+ollama==0.5.4
+mcp>=1.2.0
+langchain-core>=0.3.0
+langchain-ollama>=0.2.0
+langgraph>=0.2.0
