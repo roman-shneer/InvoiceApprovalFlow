@@ -7,7 +7,7 @@ const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
 const { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices } = require('./resources/db');
 const { initRagEngine, retrieveRelevantPolicies } = require('./resources/ragEngine');
 
-const appPort = "8002";
+const appPort = process.env.APP_PORT || "8002";
 const daprHost = process.env.DAPR_HOST || "127.0.0.1";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
 const PUB_SUB_NAME = "approval-pubsub";
@@ -63,7 +63,7 @@ async function processInvoice(trackingId, invoice) {
         const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules, hardStop);
         const finalStatus = finalResult.recommendation;
         const aiApproved = finalStatus === 'AUTO_APPROVE';
-
+        console.log(`[${trackingId}] finalStatus: ${JSON.stringify(finalStatus)}`);
         // 5. Atomic state synchronization layer execution
         invoice.status = finalStatus;
         invoice.audit_metadata = {
@@ -141,6 +141,8 @@ async function startServerWithRetry() {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             await server.start();
+
+            initRagEngine(); // <--- start indexing policies at startup
             return;
         } catch (err) {
             const msg = err && err.message ? err.message : String(err);
@@ -157,9 +159,6 @@ async function startServerWithRetry() {
 }
 
 async function start() {
-
-    await initRagEngine(); // <--- start indexing policies at startup
-
     await server.pubsub.subscribe(
         PUB_SUB_NAME,
         PUB_SUB_TOPIC,
@@ -225,12 +224,6 @@ async function start() {
     );
 
     await startServerWithRetry();
-
-
-
-
-
-
     // Replay any previously stuck PROCESSING invoices   
     if (process.env.NODE_ENV !== 'test') {
         try {

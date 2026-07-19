@@ -132,6 +132,7 @@ services:
     volumes:
       - ./services/governance:/app
       - /app/node_modules
+      - ./docs/policy.md:/app/docs/policy.md
     depends_on:
       redis:
         condition: service_started
@@ -175,7 +176,6 @@ services:
     depends_on:
       - ollama-service
     restart: "no"
-    #entrypoint: [ "sh", "-c", "until curl -s http://ollama-service:11434/api/tags > /dev/null; do echo 'Waiting for Ollama...'; sleep 5; done; echo 'Ollama is up! Pulling llama3...'; curl -X POST http://ollama-service:11434/api/pull -d '{\"name\": \"llama3\"}'" ]
     entrypoint: [ "sh", "-c", "until curl -s http://ollama-service:11434/api/tags > /dev/null; do echo 'Waiting for Ollama...'; sleep 5; done; echo 'Ollama is up! Pulling target model...'; curl -X POST http://ollama-service:11434/api/pull -d \"{\\\"name\\\": \\\"${AI_MODEL_NAME}\\\"}\"" ]
 
   ### Management UI Service ###

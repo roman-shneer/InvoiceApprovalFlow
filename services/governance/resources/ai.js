@@ -69,6 +69,7 @@ CRITICAL INSTRUCTIONS:
 - If an invoice amount is even $1 higher than a threshold specified in a rule, it is an AUTOMATIC VIOLATION.
 - DO NOT apply "safe assumptions" based on the vendor name (like DataDog) or receipt presence if a numeric limit is breached.
 - If ANY rule is violated, you MUST strictly recommend "HUMAN_REVIEW". "AUTO_APPROVE" is ONLY allowed if there are absolutely zero rule mismatches.
+- Strict Category Matching: ONLY apply a policy rule if the invoice category EXACTLY matches the policy category description. NEVER apply hardware constraints to saas invoices.
 
 The JSON object MUST follow this exact schema:
 {
