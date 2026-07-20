@@ -150,22 +150,22 @@ db.budgets.createIndex({ "_key": 1 }, { unique: true });
 db.fxRates.drop();
 db.fxRates.insertMany([
     {
-        "_id": "USD",
-        "_key": "USD",
+        "_id": "USD_2026-05-15",
+        "_key": "USD_2026-05-15",
         "value": { "rate": 1.0 },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
     {
-        "_id": "EUR",
-        "_key": "EUR",
+        "_id": "EUR_2026-05-15",
+        "_key": "EUR_2026-05-15",
         "value": { "rate": 1.08 },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
     {
-        "_id": "GBP",
-        "_key": "GBP",
+        "_id": "GBP_2026-05-15",
+        "_key": "GBP_2026-05-15",
         "value": { "rate": 1.25 },
         "_etag": crypto.randomUUID(),
         "_ttl": null

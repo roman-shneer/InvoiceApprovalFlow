@@ -36,7 +36,7 @@ async function getPendingInvoices(status = 'PENDING', limit = 1) {
 
 async function getPolicies() {
     const response = await client.state.query("mongo-policies", {
-        filter: {},
+        filter: { EQ: { "is_active": true } },
         page: { limit: 100 }
     });
 
@@ -45,7 +45,10 @@ async function getPolicies() {
     });
     return activeRules;
 }
-
+async function getFxRate(currency, date) {
+    const rateKey = `${currency}_${date}`;
+    return await client.state.get("mongo-fx-rates", rateKey);
+}
 async function getFxRates() {
     const response = await client.state.query("mongo-fx-rates", {
         filter: {},
@@ -90,4 +93,4 @@ async function saveInvoiceToMongo(invoice) {
     }
 }
 
-module.exports = { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices };
+module.exports = { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices, getFxRate };

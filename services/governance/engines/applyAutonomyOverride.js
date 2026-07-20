@@ -67,7 +67,9 @@ function applyAutonomyOverride(aiResult, invoice, rules, hardStop) {
         const uniqueReasons = [...new Set(reasons)];
         return {
             recommendation: aiResult.recommendation == 'REJECT' ? 'REJECT' : 'HUMAN_REVIEW',
+            aiRecommendation: aiResult.recommendation,
             reason: uniqueReasons.join('; '),
+            aiReason: uniqueReasons.join('; '),
             triggered_rules: [...new Set(triggeredRules)],
             confidence: confidence
         };
@@ -75,7 +77,9 @@ function applyAutonomyOverride(aiResult, invoice, rules, hardStop) {
 
     return {
         recommendation: aiResult.recommendation || 'AUTO_APPROVE',
+        aiRecommendation: aiResult.aiRecommendation || 'AUTO_APPROVE',
         reason: aiResult.reason || 'Invoice falls within safe autonomy bounds.',
+        aiReason: aiResult.aiReason || 'Invoice falls within safe autonomy bounds.',
         triggered_rules: aiResult.triggered_rules || [],
         confidence: confidence
     };

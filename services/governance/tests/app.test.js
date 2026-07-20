@@ -5,7 +5,10 @@ const mockSubscribe = jest.fn();
 const mockServerStart = jest.fn().mockResolvedValue(true);
 const { DaprServer } = require('@dapr/dapr');
 const db = require('../resources/db');
-
+jest.mock('../resources/db', () => ({
+    saveInvoiceToMongo: jest.fn().mockResolvedValue({ success: true }),
+    publishInvoiceNotification: jest.fn().mockResolvedValue(true)
+}));
 const flushPromises = () => new Promise(setImmediate);
 
 jest.mock('@dapr/dapr', () => ({

@@ -2,6 +2,7 @@ const express = require('express');
 const { DaprServer, DaprClient } = require('@dapr/dapr');
 const { classifyInvoiceWithLocalAI } = require('./resources/ai');
 const { checkHardStops } = require('./engines/checkHardStops');
+const { prepareInvoice } = require('./engines/prepareInvoice');
 const { applyAutonomyOverride } = require('./engines/applyAutonomyOverride');
 const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
 const { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices } = require('./resources/db');
@@ -33,7 +34,7 @@ const server = new DaprServer({
 
 async function processInvoice(trackingId, invoice) {
     const correlationId = invoice.correlation_id || "unknown";
-
+    invoice = await prepareInvoice(invoice);
     // Initialize empty buckets to accumulate ALL audit findings across the matrix boundaries
     let allTriggeredRules = [];
     let allReasons = [];
@@ -69,6 +70,8 @@ async function processInvoice(trackingId, invoice) {
         invoice.audit_metadata = {
             checked_at: new Date().toISOString(),
             reason: finalResult.reason,
+            aiRecommendation: finalResult.aiRecommendation,
+            aiReason: finalResult.aiReason,
             triggered_rules: finalResult.triggered_rules,
             confidence: finalResult.confidence || 0,
         };

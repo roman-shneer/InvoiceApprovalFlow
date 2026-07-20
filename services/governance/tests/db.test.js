@@ -71,20 +71,24 @@ describe('Governance resources/db', () => {
     test('getPolicies returns active rules from mongo-policies state store', async () => {
         mockStateQuery.mockResolvedValue({
             results: [
-                { data: { rule_id: 'RULE1', category: 'compliance' } },
-                { value: { rule_id: 'RULE2', category: 'finance' } }
+                { data: { rule_id: 'RULE1', category: 'compliance', 'is_active': true } },
+                { value: { rule_id: 'RULE2', category: 'finance', 'is_active': true } }
             ]
         });
 
         const activeRules = await getPolicies();
 
         expect(mockStateQuery).toHaveBeenCalledWith('mongo-policies', {
-            filter: {},
+            filter: {
+                EQ: {
+                    is_active: true
+                }
+            },
             page: { limit: 100 }
         });
         expect(activeRules).toEqual([
-            { rule_id: 'RULE1', category: 'compliance' },
-            { rule_id: 'RULE2', category: 'finance' }
+            { rule_id: 'RULE1', category: 'compliance', 'is_active': true },
+            { rule_id: 'RULE2', category: 'finance', 'is_active': true }
         ]);
     });
 });

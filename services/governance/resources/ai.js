@@ -53,31 +53,33 @@ function anonymizeInvoice(invoice) {
  */
 async function classifyInvoiceWithLocalAI(invoice, dynamicPolicyContext) {
 
-    // Construct system prompt embedding the dynamic text segments fetched via the RAG retrieval cursor
+    // Construct system prompt embedding the dynamic text segments fetched via the RAG retrieval cursor   
+
     const systemPrompt = `You are an expert corporate FinOps Compliance Auditor. 
-Your task is to analyze the user's invoice payload against the following corporate policies extracted dynamically from the company's official handbook.
-
-ACTIVE CORPORATE POLICIES (RETRIEVED VIA RAG):
-${dynamicPolicyContext || "No specific policy sections matched the query. Follow general financial guidelines."}
-
-CRITICAL INSTRUCTIONS:
-- Evaluate if the invoice violates any of the active policies (check amounts, category constraints, and vendor names).
-- If no rules are violated and the metadata looks normal, recommend "AUTO_APPROVE".
-- If any corporate rule is violated, or if the data feels anomalous, recommend "HUMAN_REVIEW".
-- You MUST respond strictly in valid JSON format. Do not write any conversational intro/outro text.
-- You are a rigid compliance validator, NOT a decision-maker. You have ZERO authority to make assumptions, exceptions, or compromises.
-- If an invoice amount is even $1 higher than a threshold specified in a rule, it is an AUTOMATIC VIOLATION.
-- DO NOT apply "safe assumptions" based on the vendor name (like DataDog) or receipt presence if a numeric limit is breached.
-- If ANY rule is violated, you MUST strictly recommend "HUMAN_REVIEW". "AUTO_APPROVE" is ONLY allowed if there are absolutely zero rule mismatches.
-- Strict Category Matching: ONLY apply a policy rule if the invoice category EXACTLY matches the policy category description. NEVER apply hardware constraints to saas invoices.
-
-The JSON object MUST follow this exact schema:
-{
-  "recommendation": "AUTO_APPROVE" or "HUMAN_REVIEW",
-  "reason": "Clear English explanation mentioning which specific rule ID or policy segment was evaluated or violated.",
-  "confidence": 0.80,
-  "triggered_rules": ["RULE-ID-1", "RULE-ID-2"]
-}`;
+        Your task is to analyze the user's invoice payload against the following corporate policies extracted dynamically from the company's official handbook.
+        
+        ACTIVE CORPORATE POLICIES (RETRIEVED VIA RAG):
+        ${dynamicPolicyContext || "No specific policy sections matched the query. Follow general financial guidelines."}
+        
+        STRICT EVALUATION RULES:
+        1. Category Mapping: Policy rules starting with the prefix "MEAL-" (such as MEAL-01, MEAL-02, MEAL-03) belong directly to the "meals" invoice category. Treat this as a valid category match.
+        2. Rule MEAL-03 Enforcement: If the invoice payload contains any indicators of alcohol, you MUST immediately add "MEAL-03" to the "triggered_rules" array.
+        
+        CRITICAL INSTRUCTIONS:
+        - Evaluate if the invoice violates any of the active policies (check amounts, category constraints, and vendor names).
+        - If an invoice amount is even $1 higher than a threshold specified in a rule, it is an AUTOMATIC VIOLATION.
+        - You MUST respond strictly in valid JSON format. Do not write any conversational intro/outro text.
+        - You have ZERO authority to make assumptions, exceptions, or compromises.
+        - If ANY rule is violated or triggered, you MUST strictly recommend "HUMAN_REVIEW". "AUTO_APPROVE" is ONLY allowed if there are absolutely zero rule mismatches.
+        - Never invent fictional rule IDs (like RULE-ID-101). Use ONLY the exact IDs found in the ACTIVE CORPORATE POLICIES text.
+        
+        The JSON object MUST follow this exact schema:
+        {
+          "recommendation": "AUTO_APPROVE" or "HUMAN_REVIEW",
+          "reason": "Clear English explanation mentioning which specific rule ID or policy segment was evaluated or violated.",
+          "confidence": 0.95,
+          "triggered_rules": ["RULE-ID-1", "RULE-ID-2"]
+        }`;
 
     console.log("SystemPrompt:", systemPrompt);
     const invoiceDetails = anonymizeInvoice(invoice);
@@ -92,9 +94,12 @@ The JSON object MUST follow this exact schema:
                 { role: 'user', content: userPrompt }
             ],
             options: {
-                temperature: 0.2,
-                top_p: 0.4,
-                num_predict: 400,
+                temperature: 0.1,
+                top_p: 0.1,
+                num_predict: 250,    // JSON-answer
+
+                num_ctx: 512, //memory buffer
+                num_thread: 4,//cpu count
             },
             format: 'json'
         });
@@ -120,7 +125,9 @@ The JSON object MUST follow this exact schema:
         }
 
         return {
+            aiRecommendation: aiResult.recommendation,
             recommendation: aiResult.recommendation,
+            aiReason: aiResult.reason || "Evaluated by local RAG-augmented AI engine successfully.",
             reason: aiResult.reason || "Evaluated by local RAG-augmented AI engine successfully.",
             confidence: parseFloat(aiResult.confidence || 0),
             triggered_rules: Array.isArray(aiResult.triggered_rules) ? aiResult.triggered_rules : []
