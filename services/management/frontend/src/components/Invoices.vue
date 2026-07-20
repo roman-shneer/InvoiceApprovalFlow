@@ -15,8 +15,9 @@
                 <td>total</td>
                 <td>expected</td>
                 <td>expected reason</td>
+                <td>ai status</td>
                 <td>audit status</td>   
-                <td>audit reason</td>
+                <td>audit reason</td>                
                 <td v-if="role=='submitter'">payment</td>                
                 <td v-if="role=='approver'">&nbsp;</td>             
             </tr>
@@ -28,10 +29,11 @@
                 <td @click="openInvoice(invoice)" title="submitted">{{ renderDate(invoice.submitted_at)}}</td>
                 <td @click="openInvoice(invoice)" title="tax">{{renderCurrency(invoice.currency)}}{{invoice.taxAmount}}</td>
                 <td @click="openInvoice(invoice)" title="total">{{renderCurrency(invoice.currency)}}{{invoice.total}}</td>
-                <td @click="openInvoice(invoice)" title="expected route">{{ getExpectedRoute(invoice) }}</td>
+                <td @click="openInvoice(invoice)" title="expected route">{{ renderStatus(invoice?.expected?.route??'') }}</td>
                 <td @click="openInvoice(invoice)" title="expected reason">{{ getExpectedReason(invoice) }}</td>
-                <td @click="openInvoice(invoice)" title="audit status">{{ renderStatus(invoice) }}</td>
-                <td @click="openInvoice(invoice)" title="audit reason">{{ invoice.audit_metadata?.reason }}</td>
+                <td @click="openInvoice(invoice)" title="ai status">{{ renderStatus(invoice?.audit_metadata?.aiRecommendation??'') }}</td>
+                <td @click="openInvoice(invoice)" title="audit status">{{ renderStatus(invoice.status??'') }}</td>
+                <td @click="openInvoice(invoice)" title="audit reason">{{ invoice?.audit_metadata?.reason }}</td>                
                 <td @click="openInvoice(invoice)" title="payment status" v-if="role=='submitter'" >{{ renderPaymentStatus(invoice) }}</td>                
                 <td v-if="role=='approver'">
                     <button @click="approveInvoice(invoice)">Approve</button>
@@ -40,6 +42,9 @@
             </tr>
         </tbody>
     </table>
+    <div>
+        {{ conclusion }}
+    </div>
 </template>
 <script>
 
@@ -60,24 +65,26 @@ export default {
             invoice:"",
             invoices:[],
             showInvoice:null,
-            eventHandlers: {}
+            eventHandlers: {},
+            conclusion: ''
         }
     },
     methods:{
-        renderStatus(invoice){
-            if(!invoice || !invoice.status){
+        renderStatus(status){
+            status=status?.toUpperCase() || '';
+            if(!status){
                 return '';
             }
-            let status ="";
-            if(invoice.status=="HUMAN_REVIEW" || invoice.status=="DECLINE" || invoice.status=="REJECT"){
-                status="❌ "+invoice.status;
-            }else if(invoice.status=="AUTO_APPROVE" || invoice.status=="APPROVED"){
-                status="✅ "+invoice.status;
+            let displayStatus ="";
+            if(status=="HUMAN_REVIEW" || status=="DECLINE" || status=="REJECT"){
+                displayStatus="❌ "+status;
+            }else if(status=="AUTO_APPROVE" || status=="APPROVED"){
+                displayStatus="✅ "+status;
             }else{
-                status=invoice.status;
+                displayStatus=status;
             }
             
-            return status;
+            return displayStatus;
         },
         renderPaymentStatus(invoice){
             if(!invoice || !invoice.payment || !invoice.payment.status){
@@ -137,6 +144,18 @@ export default {
             const status = this.role == 'approver' ? 'HUMAN_REVIEW' : null;
             const result = await this.api.GetInvoices(status);
             this.invoices = Array.isArray(result) ? result : [];
+            let correct=0;            
+            for (const invoice of this.invoices) {
+                console.log(invoice.expected?.route.toUpperCase(), invoice.audit_metadata?.aiRecommendation, (invoice.expected?.route.toUpperCase() === invoice.audit_metadata?.aiRecommendation));
+                if(invoice.expected?.route.toUpperCase() === invoice.audit_metadata?.aiRecommendation){
+                    correct++;
+                }
+            }
+            let resultPercentage="(0%)";
+            if(this.invoices.length>0){
+                resultPercentage=`(${(correct*100/this.invoices.length).toFixed(2)}%)`;
+            }
+            this.conclusion= `Correct invoices: ${correct} from  ${this.invoices.length} ${resultPercentage}`;
         },
         applyNotificationToLocalInvoices(payload){
             if (!payload || !payload.tracking_id) {
@@ -184,31 +203,7 @@ export default {
             }
             return parsed.toLocaleString();
         },
-        getExpectedRoute(invoice) {
-            if (!invoice || !invoice.expected || typeof invoice.expected !== 'object') {
-                return '-';
-            }
-            if(invoice.expected.route.toLowerCase()=='human_review'){
-                return "❌HUMAN_REVIEW";
-            }
-
-            if(invoice.expected.route.toLowerCase()=='reject'){
-                return "❌REJECT";
-            }
-
-            if(invoice.expected.route.toLowerCase()=='decline'){
-                return "❌DECLINE";
-            }
-            
-            if(invoice.expected.route.toLowerCase()=='approved'){
-                return "APPROVED";
-            }
-
-            if(invoice.expected.route.toLowerCase()=='auto_approve'){
-                return "✅AUTO_APPROVE";
-            }
-            return invoice.expected.route || '-';
-        },
+        
         getExpectedReason(invoice) {
             if (!invoice || !invoice.expected || typeof invoice.expected !== 'object') {
                 return '';
