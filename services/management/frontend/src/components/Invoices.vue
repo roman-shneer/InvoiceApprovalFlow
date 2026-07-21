@@ -1,3 +1,6 @@
+<script setup>
+import InvoicesConclusion from './InvoicesConclusion.vue';
+</script>
 <template>
     <div v-if="showInvoice!=null" class="show-invoice">
         <button class="show-invoice-close" @click="showInvoice=null">x</button>
@@ -42,9 +45,7 @@
             </tr>
         </tbody>
     </table>
-    <div>
-        {{ conclusion }}
-    </div>
+    <InvoicesConclusion :correctCount="correctCount" :processedCount="processedCount" :resultPercentage="resultPercentage" />
 </template>
 <script>
 
@@ -65,8 +66,24 @@ export default {
             invoice:"",
             invoices:[],
             showInvoice:null,
-            eventHandlers: {},
-            conclusion: ''
+            eventHandlers: {},           
+        }
+    },
+    computed: {        
+        processedCount() {
+            return this.invoices.length;
+        },
+        correctCount() {
+            return this.invoices.filter(invoice => {
+                const route = invoice.expected?.route?.toUpperCase();
+                const aiRec = invoice.audit_metadata?.aiRecommendation;
+                return route && aiRec && route === aiRec;
+            }).length;
+        },
+        resultPercentage() {
+            if (this.processedCount === 0) return '(0.00%)';
+            const percentage = (this.correctCount * 100) / this.processedCount;
+            return `(${percentage.toFixed(2)}%)`;
         }
     },
     methods:{
@@ -143,19 +160,7 @@ export default {
         async getInvoices(){
             const status = this.role == 'approver' ? 'HUMAN_REVIEW' : null;
             const result = await this.api.GetInvoices(status);
-            this.invoices = Array.isArray(result) ? result : [];
-            let correct=0;            
-            for (const invoice of this.invoices) {
-                console.log(invoice.expected?.route.toUpperCase(), invoice.audit_metadata?.aiRecommendation, (invoice.expected?.route.toUpperCase() === invoice.audit_metadata?.aiRecommendation));
-                if(invoice.expected?.route.toUpperCase() === invoice.audit_metadata?.aiRecommendation){
-                    correct++;
-                }
-            }
-            let resultPercentage="(0%)";
-            if(this.invoices.length>0){
-                resultPercentage=`(${(correct*100/this.invoices.length).toFixed(2)}%)`;
-            }
-            this.conclusion= `Correct invoices: ${correct} from  ${this.invoices.length} ${resultPercentage}`;
+            this.invoices = Array.isArray(result) ? result : [];                       
         },
         applyNotificationToLocalInvoices(payload){
             if (!payload || !payload.tracking_id) {

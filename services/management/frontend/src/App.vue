@@ -2,6 +2,6 @@
 import Index from './components/Index.vue'
 </script>
 
-<template>
+<template>  
   <Index />
 </template>
