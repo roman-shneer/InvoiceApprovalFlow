@@ -7,7 +7,8 @@ function applyAutonomyOverride(aiResult, invoice, rules, hardStop) {
     const activeRules = Array.isArray(rules) ? rules : [];
     const amount = parseFloat(invoice.amount || invoice.total || 0);
     const confidence = parseFloat(aiResult.confidence || invoice.confidence || 0);
-
+    const aiReason = aiResult.reason;
+    const aiRecommendation = aiResult.recommendation;
     const extractNumericThreshold = (rule, fallback) => {
         if (!rule) return fallback;
         const candidates = [
@@ -67,19 +68,20 @@ function applyAutonomyOverride(aiResult, invoice, rules, hardStop) {
         const uniqueReasons = [...new Set(reasons)];
         return {
             recommendation: aiResult.recommendation == 'REJECT' ? 'REJECT' : 'HUMAN_REVIEW',
-            aiRecommendation: aiResult.recommendation,
+            aiRecommendation: aiRecommendation,
             reason: uniqueReasons.join('; '),
-            aiReason: uniqueReasons.join('; '),
+            aiReason: aiReason,
             triggered_rules: [...new Set(triggeredRules)],
-            confidence: confidence
+            confidence: confidence,
+            model: aiResult.model || 'AI_ENGINE'
         };
     }
 
     return {
         recommendation: aiResult.recommendation || 'AUTO_APPROVE',
-        aiRecommendation: aiResult.aiRecommendation || 'AUTO_APPROVE',
+        aiRecommendation: aiRecommendation || 'AUTO_APPROVE',
         reason: aiResult.reason || 'Invoice falls within safe autonomy bounds.',
-        aiReason: aiResult.aiReason || 'Invoice falls within safe autonomy bounds.',
+        aiReason: aiReason,
         triggered_rules: aiResult.triggered_rules || [],
         confidence: confidence,
         model: aiResult.model || 'AI_ENGINE'
