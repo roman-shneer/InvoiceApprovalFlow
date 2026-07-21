@@ -14,9 +14,9 @@ async function initRagEngine() {
         const policies = await getPolicies();
 
         const docs = policies.map(rule => {
-            const fullTextContent = `Rule ID: ${rule.rule_id}
-        Category: ${rule.category}
-        Description: ${rule.rule_text}`;
+            const fullTextContent = `Rule ID: ${rule.rule_id} 
+category: ${rule.category.toLowerCase()} 
+Description: ${rule.rule_text}`;
 
             return new Document({
                 pageContent: fullTextContent,

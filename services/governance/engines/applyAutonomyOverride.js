@@ -81,7 +81,8 @@ function applyAutonomyOverride(aiResult, invoice, rules, hardStop) {
         reason: aiResult.reason || 'Invoice falls within safe autonomy bounds.',
         aiReason: aiResult.aiReason || 'Invoice falls within safe autonomy bounds.',
         triggered_rules: aiResult.triggered_rules || [],
-        confidence: confidence
+        confidence: confidence,
+        model: aiResult.model || 'AI_ENGINE'
     };
 }
 

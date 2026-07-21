@@ -1,6 +1,6 @@
 const express = require('express');
 const { DaprServer, DaprClient } = require('@dapr/dapr');
-const { classifyInvoiceWithLocalAI } = require('./resources/ai');
+const { aiManager } = require('./managers/aiManager');
 const { checkHardStops } = require('./engines/checkHardStops');
 const { prepareInvoice } = require('./engines/prepareInvoice');
 const { applyAutonomyOverride } = require('./engines/applyAutonomyOverride');
@@ -50,8 +50,7 @@ async function processInvoice(trackingId, invoice) {
         let aiResult;
         try {
             const dynamicPolicyContext = await retrieveRelevantPolicies(invoice);
-            console.log(`[${trackingId}] RAG Context Retrieved:\n${dynamicPolicyContext}`);
-            aiResult = await classifyInvoiceWithLocalAI(invoice, dynamicPolicyContext);
+            aiResult = await aiManager(invoice, dynamicPolicyContext);
         } catch (err) {
             aiResult = evaluateInvoiceWithAI(invoice, await getPolicies());
             console.log(`[${trackingId}] ERROR: AI failure context: ${err.message}. Triggered static heuristics.`);
@@ -72,6 +71,7 @@ async function processInvoice(trackingId, invoice) {
             reason: finalResult.reason,
             aiRecommendation: finalResult.aiRecommendation,
             aiReason: finalResult.aiReason,
+            aiModel: finalResult.model,
             triggered_rules: finalResult.triggered_rules,
             confidence: finalResult.confidence || 0,
         };
@@ -114,13 +114,14 @@ async function processInvoice(trackingId, invoice) {
 }
 
 async function startWorkerLoop() {
+    const delayMs = (process.env.AI_REQUEST_DELAY && process.env.AI_REQUEST_DELAY.trim() !== "") ? parseInt(process.env.AI_REQUEST_DELAY) : 250;
     while (true) {
         const invoices = await getPendingInvoices('PENDING', 1);
         if (invoices && invoices.length > 0) {
             const invoice = invoices[0];
             const trackingId = invoice.tracking_id || invoice.id;
             await processInvoice(trackingId, invoice);
-            await new Promise(res => setTimeout(res, 250));
+            await new Promise(res => setTimeout(res, delayMs));
         } else {
             await new Promise(res => setTimeout(res, 2000));
         }

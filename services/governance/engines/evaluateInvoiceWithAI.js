@@ -49,7 +49,9 @@ function evaluateInvoiceWithAI(invoice, rules) {
         }
     }
 
-    return { recommendation, triggered_rules, reason };
+    const confidence = recommendation === "AUTO_APPROVE" ? 1.0 : 0.0;
+    const model = "FALLBACK_RULE_ENGINE";
+    return { recommendation, triggered_rules, reason, confidence, model };
 }
 
 module.exports = { evaluateInvoiceWithAI };
