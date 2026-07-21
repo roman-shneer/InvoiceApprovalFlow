@@ -84,7 +84,6 @@ sequenceDiagram
     IS->>GS: Dapr Pub/Sub: invoice.submitted
     IS->>ZK: Export Ingestion Span
     
-    Note over GS: Executes checkHardStops() -> Pass
     Note over GS: Evaluates applyAutonomyOverride() -> Auto-Approve
     GS->>DB: Persist Audited Status: AUTO_APPROVE
     

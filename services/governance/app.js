@@ -1,11 +1,9 @@
 const express = require('express');
 const { DaprServer, DaprClient } = require('@dapr/dapr');
 const { aiManager } = require('./managers/aiManager');
-const { checkHardStops } = require('./engines/checkHardStops');
-const { prepareInvoice } = require('./engines/prepareInvoice');
 const { applyAutonomyOverride } = require('./engines/applyAutonomyOverride');
 const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
-const { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices } = require('./resources/db');
+const { getPolicies, saveInvoiceToMongo, getPendingInvoices, getFxRate } = require('./resources/db');
 const { initRagEngine, retrieveRelevantPolicies } = require('./resources/ragEngine');
 
 const appPort = process.env.APP_PORT || "8002";
@@ -31,10 +29,18 @@ const server = new DaprServer({
     client: daprClient
 });
 
+async function resolveFxRate(invoice) {
+    if (invoice.currency !== 'USD') {
+        const rateEntry = await getFxRate(invoice.currency, invoice.date);
+        if (rateEntry && rateEntry.rate) {
+            return rateEntry.rate;
+        }
+    }
 
+    return 1;
+}
 async function processInvoice(trackingId, invoice) {
     const correlationId = invoice.correlation_id || "unknown";
-    invoice = await prepareInvoice(invoice);
     // Initialize empty buckets to accumulate ALL audit findings across the matrix boundaries
     let allTriggeredRules = [];
     let allReasons = [];
@@ -43,16 +49,13 @@ async function processInvoice(trackingId, invoice) {
     await publishInvoiceNotification(invoice, NOTIFICATION_PROCESSED_TOPIC);
     try {
         const activeRules = await getPolicies();
-        const fxRates = await getFxRates();
-
-        // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)
-        const hardStop = checkHardStops(invoice, activeRules, fxRates);
+        // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)        
         let aiResult;
         try {
             const dynamicPolicyContext = await retrieveRelevantPolicies(invoice);
             aiResult = await aiManager(invoice, dynamicPolicyContext);
         } catch (err) {
-            aiResult = evaluateInvoiceWithAI(invoice, await getPolicies());
+            aiResult = evaluateInvoiceWithAI(invoice, activeRules);
             console.log(`[${trackingId}] ERROR: AI failure context: ${err.message}. Triggered static heuristics.`);
         }
 
@@ -60,21 +63,11 @@ async function processInvoice(trackingId, invoice) {
         console.log(`[${trackingId}] AI Evaluation Result: ${JSON.stringify(aiResult)}`);
 
         // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
-        const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules, hardStop);
-        const finalStatus = finalResult.recommendation;
-        const aiApproved = finalStatus === 'AUTO_APPROVE';
-        console.log(`[${trackingId}] finalStatus: ${JSON.stringify(finalStatus)}`);
+        const rate = resolveFxRate(invoice);
+        invoice.audit_metadata = applyAutonomyOverride(aiResult, invoice, activeRules, rate);
+        invoice.status = invoice.audit_metadata.recommendation;
+        const aiApproved = invoice.status === 'AUTO_APPROVE';
         // 5. Atomic state synchronization layer execution
-        invoice.status = finalStatus;
-        invoice.audit_metadata = {
-            checked_at: new Date().toISOString(),
-            reason: finalResult.reason,
-            aiRecommendation: finalResult.aiRecommendation,
-            aiReason: finalResult.aiReason,
-            aiModel: finalResult.model,
-            triggered_rules: finalResult.triggered_rules,
-            confidence: finalResult.confidence || 0,
-        };
 
         await saveInvoiceToMongo(invoice);
         await publishInvoiceNotification(invoice, NOTIFICATION_PROCESSED_TOPIC);

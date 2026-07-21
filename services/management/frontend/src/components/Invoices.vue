@@ -34,7 +34,7 @@ import InvoicesConclusion from './InvoicesConclusion.vue';
                 <td @click="openInvoice(invoice)" title="total">{{renderCurrency(invoice.currency)}}{{invoice.total}}</td>
                 <td @click="openInvoice(invoice)" title="expected route">{{ renderStatus(invoice?.expected?.route??'') }}</td>
                 <td @click="openInvoice(invoice)" title="expected reason">{{ getExpectedReason(invoice) }}</td>
-                <td @click="openInvoice(invoice)" title="ai status">{{ renderStatus(invoice?.audit_metadata?.aiRecommendation??'') }}</td>
+                <td @click="openInvoice(invoice)" :title="JSON.stringify(invoice?.audit_metadata?.aiResult)">{{ renderStatus(invoice?.audit_metadata?.aiResult?.recommendation ?? '') }}</td>
                 <td @click="openInvoice(invoice)" title="audit status">{{ renderStatus(invoice.status??'') }}</td>
                 <td @click="openInvoice(invoice)" title="audit reason">{{ invoice?.audit_metadata?.reason }}</td>                
                 <td @click="openInvoice(invoice)" title="payment status" v-if="role=='submitter'" >{{ renderPaymentStatus(invoice) }}</td>                
