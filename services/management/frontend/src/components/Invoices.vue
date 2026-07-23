@@ -71,12 +71,12 @@ export default {
     },
     computed: {        
         processedCount() {
-            return this.invoices.length;
+            return this.invoices.filter(invoice => ['AUTO_APPROVE', 'HUMAN_REVIEW', 'DECLINE', 'REJECT'].includes(invoice.status)).length;
         },
         correctCount() {
             return this.invoices.filter(invoice => {
                 const route = invoice.expected?.route?.toUpperCase();
-                const aiRec = invoice.audit_metadata?.aiRecommendation;
+                const aiRec = invoice.audit_metadata?.aiResult?.recommendation?.toUpperCase();
                 return route && aiRec && route === aiRec;
             }).length;
         },
@@ -87,11 +87,11 @@ export default {
         }
     },
     methods:{
-        renderStatus(status){
-            status=status?.toUpperCase() || '';
-            if(!status){
+        renderStatus(status){                        
+            if(!status || typeof status !== 'string'){
                 return '';
             }
+            status=status?.toUpperCase() || '';
             let displayStatus ="";
             if(status=="HUMAN_REVIEW" || status=="DECLINE" || status=="REJECT"){
                 displayStatus="❌ "+status;
@@ -103,6 +103,8 @@ export default {
             
             return displayStatus;
         },
+
+
         renderPaymentStatus(invoice){
             if(!invoice || !invoice.payment || !invoice.payment.status){
                 return '';
@@ -119,6 +121,8 @@ export default {
             
             return status;
         },       
+
+
         async approveInvoice(invoice){
             try {
                 const key = invoice.key || invoice.tracking_id || invoice.id;
@@ -132,6 +136,8 @@ export default {
                 alert('Approve failed: ' + err.message);
             }
         },
+
+
         async rejectInvoice(invoice){
             try {
                 const key = invoice.key || invoice.tracking_id || invoice.id;
@@ -145,9 +151,13 @@ export default {
                 alert('Reject failed: ' + err.message);
             }
         },
+
+
         openInvoice(invoice){                       
             this.showInvoice=JSON.stringify(invoice, null, 2);
         },
+
+
         renderCurrency(currency){
             if(currency=='USD'){
                 return "$";
@@ -157,11 +167,16 @@ export default {
                 return '?';
             }
         },
+
+
         async getInvoices(){
             const status = this.role == 'approver' ? 'HUMAN_REVIEW' : null;
             const result = await this.api.GetInvoices(status);
             this.invoices = Array.isArray(result) ? result : [];                       
+            console.log("Invoices fetched", this.invoices);
         },
+
+
         applyNotificationToLocalInvoices(payload){
             if (!payload || !payload.tracking_id) {
                 return false;
@@ -186,11 +201,15 @@ export default {
             }
             return false;
         },
+
+
         onInvoiceEvent(payload){            
             if (!this.applyNotificationToLocalInvoices(payload)) {
                 this.getInvoices();
             }
         },
+
+
         onInvoiceRefresh(payload) {            
             if (payload && Array.isArray(payload.invoices)) {
                 this.invoices = payload.invoices;
@@ -198,6 +217,8 @@ export default {
                 this.getInvoices();
             }
         },
+
+
         renderDate(d){
             if (!d) {
                 return '-';
