@@ -57,7 +57,7 @@ class groqProvider {
 
 
             return {
-                "triggered_rules": Array.isArray(aiResponse.triggered_rules) ? aiResponse.triggered_rules : [],
+                "triggered_rules": Array.isArray(aiResponse.rules) ? aiResponse.rules : [],
                 "reason": aiResponse.reason || "Evaluated by Groq API successfully.",
                 "confidence": parseFloat(aiResponse.confidence ?? 1.0),
                 "recommendation": aiResponse.recommendation || "HUMAN_REVIEW",
@@ -74,7 +74,7 @@ class groqProvider {
 
     getFallbackResponse(modelName, internalReason) {
         return {
-            "triggered_rules": ["API_COMPLIANCE_FALLBACK"],
+            "rules": ["API_COMPLIANCE_FALLBACK"],
             "reason": `System safety fallback triggered. Audit forced to manual review. (Details: ${internalReason})`,
             "confidence": 0.0,
             "recommendation": "HUMAN_REVIEW",
@@ -95,12 +95,12 @@ ${dynamicPolicyContext || "No specific policy sections matched the query. Follow
 1. CASE-INSENSITIVITY: Treat category names as case-insensitive.
 2. TRUST THE PAYLOAD: Do not recalculate or validate if (quantity * unitPrice + tax) equals the total. Strictly use the provided "total" field value as the absolute truth for all rule evaluations.
 3. ALCOHOL DETECTION: If any line item description contains "Alcohol", "bar tab", "wine", or "beer", trigger Rule MEAL-03.
-4. UNKNOWN CATEGORIES: If the invoice contains a category that is NOT explicitly mentioned or mapped in the <policies> block, you MUST treat it as a violation, add "UNKNOWN_CATEGORY" to the "triggered_rules" array, and route it to human review.
+4. UNKNOWN CATEGORIES: If the invoice contains a category that is NOT explicitly mentioned or mapped in the <policies> block, you MUST treat it as a violation, add "UNKNOWN_CATEGORY" to the "rules" array, and route it to human review.
 
 [STRICT VERDICT MAPPING]
 You must apply this absolute mathematical logic for the final recommendation:
-- If "triggered_rules" IS EMPTY -> "recommendation" MUST BE "AUTO_APPROVE".
-- If "triggered_rules" HAS ANY ELEMENTS -> "recommendation" MUST BE "HUMAN_REVIEW".
+- If "rules" IS EMPTY -> "recommendation" MUST BE "AUTO_APPROVE".
+- If "rules" HAS ANY ELEMENTS -> "recommendation" MUST BE "HUMAN_REVIEW".
 There are zero exceptions. A non-empty array strictly locks the verdict to "HUMAN_REVIEW".
 
 [JSON SCHEMA]
@@ -109,7 +109,7 @@ CRITICAL: The "thought_process" field MUST contain ONLY the rule IDs evaluated. 
 
 {
     "thought_process": "Evaluating MEAL-03 and GLOBAL-VENDOR",
-    "triggered_rules": [],
+    "rules": [],
     "reason": "Short 1-sentence compliance verdict.",
     "confidence": 1.0,
     "recommendation": "Either 'AUTO_APPROVE' or 'HUMAN_REVIEW'"

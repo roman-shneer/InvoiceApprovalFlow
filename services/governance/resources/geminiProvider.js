@@ -16,7 +16,7 @@ class geminiProvider {
                     responseSchema: {
                         type: "OBJECT",
                         properties: {
-                            triggered_rules: {
+                            rules: {
                                 type: "ARRAY",
                                 items: { type: "STRING" },
                                 description: "Array of policy rule IDs violated. If none, MUST be empty array []."
@@ -32,10 +32,10 @@ class geminiProvider {
                             recommendation: {
                                 type: "STRING",
                                 enum: ["AUTO_APPROVE", "HUMAN_REVIEW"],
-                                description: "Strictly 'HUMAN_REVIEW' if triggered_rules contains any items. 'AUTO_APPROVE' only if empty."
+                                description: "Strictly 'HUMAN_REVIEW' if rules contains any items. 'AUTO_APPROVE' only if empty."
                             }
                         },
-                        required: ["triggered_rules", "reason", "confidence", "recommendation"],
+                        required: ["rules", "reason", "confidence", "recommendation"],
                     }
                 }
             });
@@ -51,7 +51,7 @@ class geminiProvider {
 
 
             return {
-                "triggered_rules": Array.isArray(aiResponse.triggered_rules) ? aiResponse.triggered_rules : [],
+                "triggered_rules": Array.isArray(aiResponse.rules) ? aiResponse.rules : [],
                 "reason": aiResponse.reason || "Evaluated by Gemini successfully.",
                 "confidence": parseFloat(aiResponse.confidence ?? 1.0),
                 "recommendation": aiResponse.recommendation || "HUMAN_REVIEW",
@@ -87,14 +87,14 @@ Your task is to analyze the user's invoice payload against the following corpora
 
 [STRICT VERDICT MAPPING]
 You must apply this absolute mathematical logic for the final recommendation:
-- If "triggered_rules" IS EMPTY -> "recommendation" MUST BE "AUTO_APPROVE".
-- If "triggered_rules" HAS ANY ELEMENTS -> "recommendation" MUST BE "HUMAN_REVIEW".
+- If "rules" IS EMPTY -> "recommendation" MUST BE "AUTO_APPROVE".
+- If "rules" HAS ANY ELEMENTS -> "recommendation" MUST BE "HUMAN_REVIEW".
 There are zero exceptions. A non-empty array strictly locks the verdict to "HUMAN_REVIEW".
 
 [JSON SCHEMA]
 You MUST respond strictly in a valid JSON object format. Follow this exact sequence of keys:
 {
-    "triggered_rules": ["Array of triggered rule IDs, e.g., ['HW-02']"],
+    "rules": ["Array of triggered rule IDs, e.g., ['HW-02']"],
     "reason": "Detailed English explanation mentioning which specific rule ID or policy segment was evaluated or violated.",
     "confidence": 1.0,
     "recommendation": "Either 'AUTO_APPROVE' or 'HUMAN_REVIEW'"

@@ -60,11 +60,13 @@ async function processInvoice(trackingId, invoice) {
         }
 
 
-        console.log(`[${trackingId}] AI Evaluation Result: ${JSON.stringify(aiResult)}`);
+        console.log(`[${trackingId}] AI Result: ${JSON.stringify(aiResult)}`);
 
         // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
-        const rate = resolveFxRate(invoice);
+        const rate = await resolveFxRate(invoice);
+
         invoice.audit_metadata = applyAutonomyOverride(aiResult, invoice, activeRules, rate);
+
         invoice.status = invoice.audit_metadata.recommendation;
         const aiApproved = invoice.status === 'AUTO_APPROVE';
         // 5. Atomic state synchronization layer execution

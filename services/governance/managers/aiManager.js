@@ -62,11 +62,7 @@ async function aiManager(invoice, dynamicPolicyContext) {
     console.log(`[${invoice.tracking_id}]SystemPrompt: ${systemPrompt}`);
     console.log(`[${invoice.tracking_id}]UserPrompt: ${userPrompt}`);
     const result = await provider.requestModel(systemPrompt, userPrompt);
-    if (result.triggered_rules && result.triggered_rules.includes('MEAL-03')) {
-        result.recommendation = 'REJECT';
-    }
-
-    console.log("aiManager", result);
+    console.log(`[${invoice.tracking_id}] AI Model Result: ${JSON.stringify(result)}`);
     return result;
 }
 

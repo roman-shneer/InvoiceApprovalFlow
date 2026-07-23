@@ -41,7 +41,10 @@ function applyAutonomyOverride(aiResult, invoice, rules, fxRate = 1) {
 
     let reasons = [];
     const triggeredRules = [];
-
+    let recommendation = aiResult.recommendation || 'HUMAN_REVIEW';
+    if (!['REJECT', 'HUMAN_REVIEW', 'AUTO_APPROVE'].includes(aiResult.recommendation)) {
+        recommendation = 'HUMAN_REVIEW';
+    }
 
     // 1. GLOBAL-VENDOR Policy Enforcement Check
     if (hasRule('GLOBAL-VENDOR') && (!vendorKnown || ["unknown", "brand-new vendor"].includes(vendor))) {
@@ -77,6 +80,9 @@ function applyAutonomyOverride(aiResult, invoice, rules, fxRate = 1) {
         triggeredRules.push("MEAL-01");
         reasons.push("Required business meal item context is missing.");
     }
+    if (hasRule('MEAL-03') && aiResult.triggered_rules.includes('MEAL-03')) {
+        recommendation = 'REJECT';
+    }
 
     // 6. GLOBAL-MATH Policy Enforcement Check (Triggers strictly on actual mathematical mismatches)
     if (invoice.lineItems && invoice.lineItems.length > 0) {
@@ -110,7 +116,7 @@ function applyAutonomyOverride(aiResult, invoice, rules, fxRate = 1) {
         triggeredRules.push('AUTONOMY-CONFIDENCE');
     }
 
-    if (['HUMAN_REVIEW', 'REJECT'].includes(aiResult.recommendation) && aiResult.reason) {
+    if (['HUMAN_REVIEW', 'REJECT'].includes(recommendation) && aiResult.reason) {
         reasons.push(aiResult.reason);
         if (Array.isArray(aiResult.triggered_rules)) {
             triggeredRules.push(...aiResult.triggered_rules);
@@ -122,7 +128,7 @@ function applyAutonomyOverride(aiResult, invoice, rules, fxRate = 1) {
     if (reasons.length > 0) {
         const uniqueReasons = [...new Set(reasons)];
         return {
-            recommendation: aiResult.recommendation == 'REJECT' ? 'REJECT' : 'HUMAN_REVIEW',
+            recommendation: recommendation === 'REJECT' || 'HUMAN_REVIEW',
             aiResult: aiResult,
             reason: uniqueReasons.join('; '),
             triggered_rules: [...new Set(triggeredRules)],
@@ -132,7 +138,7 @@ function applyAutonomyOverride(aiResult, invoice, rules, fxRate = 1) {
     }
 
     return {
-        recommendation: aiResult.recommendation || 'AUTO_APPROVE',
+        recommendation: recommendation,
         aiResult: aiResult,
         reason: aiResult.reason || 'Invoice falls within safe autonomy bounds.',
         triggered_rules: aiResult.triggered_rules || [],

@@ -29,17 +29,29 @@ class ollamaProvider {
             if (rawContent.startsWith("```")) {
                 rawContent = rawContent.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
             }
+            console.log("ollamaProvider rawContent:", rawContent);
+            let aiResult
+            try {
+                aiResult = JSON.parse(rawContent);
+            } catch (parseErr) {
+                console.error("ollamaProvider JSON parse error:", parseErr.message);
+                aiResult = {
+                    recommendation: "HUMAN_REVIEW",
+                    reason: `Failed to parse AI model JSON output: ${parseErr.message}. Forced routing to manual queue.`,
+                    confidence: 0,
+                    triggered_rules: [],
+                };
+            }
+            if (aiResult.analysis) {
+                aiResult = aiResult.analysis[0];
+            }
 
-            const aiResult = JSON.parse(rawContent);
-
-
-            // Custom override for critical workflow logic constraints
 
             return {
-                recommendation: aiResult.recommendation,
+                recommendation: aiResult.recommendation || "HUMAN_REVIEW",
                 reason: aiResult.reason || "Evaluated by local RAG-augmented AI engine successfully.",
                 confidence: parseFloat(aiResult.confidence || 0),
-                triggered_rules: Array.isArray(aiResult.triggered_rules) ? aiResult.triggered_rules : [],
+                triggered_rules: Array.isArray(aiResult.rules) ? aiResult.rules : [],
                 model: process.env.AI_MODEL_NAME || 'llama3'
             };
 
@@ -56,6 +68,7 @@ class ollamaProvider {
     }
 
     generateSystemPrompt(dynamicPolicyContext) {
+
         const systemPrompt = `You are an expert corporate FinOps Compliance Auditor. 
 Your task is to analyze the user's invoice payload against the following corporate policies extracted dynamically from the company's official handbook.
 
@@ -63,27 +76,23 @@ Your task is to analyze the user's invoice payload against the following corpora
 <policies>
 ${dynamicPolicyContext || "No specific policy sections matched the query. Follow general financial guidelines."}
 </policies>
+[STRICT VERDICT MAPPING]
+- If "rules" is [] -> "recommendation" MUST BE "AUTO_APPROVE"
+- If "rules" has items -> "recommendation" MUST BE "HUMAN_REVIEW"
 
-STRICT EVALUATION RULES:
-1. Category Mapping: Policy rules starting with the prefix "MEAL-" (such as MEAL-01, MEAL-02, MEAL-03) belong directly to the "meals" invoice category. Treat this as a valid category match.
-2. Rule MEAL-03 Enforcement: If the invoice payload contains any indicators of alcohol, you MUST immediately add "MEAL-03" to the "triggered_rules" array.
+Output ONLY raw JSON. No markdown, no formatting. Keep "reason" under 10 words. 
+You are strictly FORBIDDEN from putting objects inside the rules array. It must be a flat array of strings.
 
-CRITICAL INSTRUCTIONS:
-- Evaluate if the invoice violates any of the active policies (check amounts, category constraints, and vendor names).
-- If an invoice amount is even $1 higher than a threshold specified in a rule, it is an AUTOMATIC VIOLATION.
-- You MUST respond strictly in valid JSON format. Do not write any conversational intro/outro text.
-- You have ZERO authority to make assumptions, exceptions, or compromises.
-- If ANY rule is violated or triggered, you MUST strictly recommend "HUMAN_REVIEW". "AUTO_APPROVE" is ONLY allowed if there are absolutely zero rule mismatches.
-- Use ONLY the exact IDs found in the ACTIVE CORPORATE POLICIES text.
-
-The JSON object MUST follow this exact schema:
+Exact template to copy:
 {
-    "thought_process": "Step-by-step math comparison. Example: 1. Invoice category is 'hardware', which matches Rule HW-02. 2. Total is 1400. 3. Rule HW-02 threshold is 1000. 4. 1400 > 1000 is TRUE, so HW-02 is triggered.",
-    "recommendation": "AUTO_APPROVE" or "HUMAN_REVIEW",
-    "reason": "Clear English explanation mentioning which specific rule ID or policy segment was evaluated or violated.",
-    "confidence": 0.80,// A float between 0 and 1 indicating your confidence in the recommendation.
-    "triggered_rules": []// An array of rule IDs that were triggered or violated. If none, return an empty array.
-}`;
+    "rules": ["RULE-ID"],
+    "reason": "Short text.",
+    "recommendation": "VERDICT",
+    "confidence": 0.8
+}
+
+CRITICAL: Start with '{' immediately. Do not write descriptions inside the array.
+`;
 
         return systemPrompt;
     }
