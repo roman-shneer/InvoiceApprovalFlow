@@ -16,7 +16,7 @@ function extractNumericThreshold(rule, fallback) {
     return fallback;
 }
 
-function applyAutonomyOverride(aiResult, invoice, rules, fxRate = 1) {
+function applyOverride(aiResult, invoice, rules, fxRate = 1) {
 
     const activeRules = Array.isArray(rules) ? rules : [];
     const hasRule = (key) => activeRules.some(r => r.rule_id === key || r.key === key || (r.value && r.value.rule_id === key));
@@ -147,4 +147,4 @@ function applyAutonomyOverride(aiResult, invoice, rules, fxRate = 1) {
     };
 }
 
-module.exports = { applyAutonomyOverride };
+module.exports = { applyOverride };

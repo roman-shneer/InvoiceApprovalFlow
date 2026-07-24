@@ -1,73 +1,50 @@
+const Groq = require("groq-sdk");
+const groq = new Groq({
+    apiKey: process.env.GROQ_API_KEY
+});
 class groqProvider {
 
     async requestModel(systemPrompt, userPrompt) {
-        const modelName = "qwen/qwen3.6-27b";
+        //const modelName = "qwen/qwen3.6-27b";    
+        const modelName = "openai/gpt-oss-120b";
 
         try {
-            const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
-                },
-                body: JSON.stringify({
-                    model: modelName,
-                    messages: [
-                        { role: "system", content: systemPrompt },
-                        { role: "user", content: userPrompt }
-                    ],
-                    temperature: 0,
-                    max_completion_tokens: 2048
-                })
+            const completion = await groq.chat.completions.create({
+                model: modelName,
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                temperature: 0,
+                max_completion_tokens: 1024,
             });
+            console.log("groqProvider completion:", completion);
+            const rawContent = completion.choices[0]?.message?.content;
 
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                const errorMessage = errorData.error?.message || `HTTP ${response.status} ${response.statusText}`;
-                console.error(`[❌ Groq API Error]: status ${response.status}, message: ${errorMessage}`);
-                return getFallbackResponse(modelName, `Groq API Error: ${errorMessage}`);
+            if (!rawContent) {
+                throw new Error("Empty response from Groq SDK");
             }
+            console.log("groqProvider rawContent:", rawContent);
 
-            const data = await response.json();
-
-
-            if (!data.choices || !data.choices[0] || !data.choices[0].message?.content) {
-                console.error("[❌ Groq API Bad Structure]: Response format is invalid", data);
-                return this.getFallbackResponse(modelName, "Invalid format structure returned from Groq API.");
-            }
-            let rawContent = data.choices[0].message.content;
-
-
-            // 🚀 cleaning <think>...</think>
-            if (rawContent.includes("</thinking>")) {
-                rawContent = rawContent.split("</thinking>").pop().trim();
-            } else if (rawContent.includes("</think>")) {
-                rawContent = rawContent.split("</think>").pop().trim();
-            }
-            rawContent = rawContent.replace(/```json/g, "").replace(/```/g, "").trim();
-            console.log("[Groq Raw Content]:", rawContent);
-            let aiResponse;
-            try {
-                aiResponse = JSON.parse(rawContent);
-            } catch (parseError) {
-                console.error("[❌ JSON Parse Error]: Failed to parse model content string", parseError);
-                return this.getFallbackResponse(modelName, "Model generated unparsable JSON document.");
-            }
-
+            const aiResponse = JSON.parse(rawContent);
 
             return {
-                "triggered_rules": Array.isArray(aiResponse.rules) ? aiResponse.rules : [],
-                "reason": aiResponse.reason || "Evaluated by Groq API successfully.",
-                "confidence": parseFloat(aiResponse.confidence ?? 1.0),
-                "recommendation": aiResponse.recommendation || "HUMAN_REVIEW",
+                "triggered_rules": aiResponse.rules,
+                "reason": aiResponse.reason,
+                "confidence": aiResponse.confidence,
+                "recommendation": aiResponse.recommendation,
                 "model": modelName
             };
 
-        } catch (networkError) {
-
-            console.error("[❌ Groq Network Fatal Error]:", networkError.message);
-            return this.getFallbackResponse(modelName, `Network/Fetch fatal failure: ${networkError.message}`);
+        } catch (error) {
+            console.error("[❌ Groq SDK Error]:", error.message);
+            return {
+                "triggered_rules": ["API_GROQ_SDK_FALLBACK"],
+                "reason": `Groq SDK execution failed: ${error.message}`,
+                "confidence": 0.0,
+                "recommendation": "HUMAN_REVIEW",
+                "model": modelName
+            };
         }
     }
 
@@ -103,19 +80,10 @@ You must apply this absolute mathematical logic for the final recommendation:
 - If "rules" HAS ANY ELEMENTS -> "recommendation" MUST BE "HUMAN_REVIEW".
 There are zero exceptions. A non-empty array strictly locks the verdict to "HUMAN_REVIEW".
 
-[JSON SCHEMA]
-You MUST respond strictly in valid JSON format. Do not wrap the JSON in markdown blocks. Output raw JSON only. 
-CRITICAL: The "thought_process" field MUST contain ONLY the rule IDs evaluated. Maximum 5 words. Do not write math explanations.
-
-{
-    "thought_process": "Evaluating MEAL-03 and GLOBAL-VENDOR",
-    "rules": [],
-    "reason": "Short 1-sentence compliance verdict.",
-    "confidence": 1.0,
-    "recommendation": "Either 'AUTO_APPROVE' or 'HUMAN_REVIEW'"
-}
-
-CRITICAL: Start with '{' immediately. Do not write descriptions inside the array.
+[OUTPUT INSTRUCTION]
+Return ONLY a valid JSON object. Do not wrap the output in markdown blocks (no \\\`\\\`\\\`json). Keep the "reason" field brief and under 10 words. 
+The object structure must be exactly:
+{"rules": [], "reason": "", "confidence": 1.0, "recommendation": ""}
 `;
         return systemPrompt;
     }

@@ -84,7 +84,7 @@ sequenceDiagram
     IS->>GS: Dapr Pub/Sub: invoice.submitted
     IS->>ZK: Export Ingestion Span
     
-    Note over GS: Evaluates applyAutonomyOverride() -> Auto-Approve
+    Note over GS: Evaluates applyOverride() -> Auto-Approve
     GS->>DB: Persist Audited Status: AUTO_APPROVE
     
     GS->>PS: Dapr Pub/Sub: payment.requested
@@ -111,7 +111,7 @@ sequenceDiagram
     IS-->>Client: 202 Accepted (Tracking ID: INV-1007)
     IS->>GS: Dapr Pub/Sub: invoice.submitted
     
-    Note over GS: applyAutonomyOverride Triggered:<br/>\$1250 exceeds database AUTONOMY-CEILING limit (\$250).
+    Note over GS: applyOverride Triggered:<br/>\$1250 exceeds database AUTONOMY-CEILING limit (\$250).
     Note over GS: Forcing State: HUMAN_REVIEW
     GS->>DB: Save to mongo-invoices with triggered_rules: ["AUTONOMY-CEILING"]
     Note over GS: Durable execution sequence paused for manual backoffice resume

@@ -93,7 +93,8 @@ db.policies.insertMany([
     {
         "_id": "GLOBAL-MATH",
         "_key": "GLOBAL-MATH",
-        "value": { "rule_id": "GLOBAL-MATH", "category": "Global rules", "rule_text": "The line items + tax must reconcile to total.", "is_active": true, "created_at": new Date() },
+        //"value": { "rule_id": "GLOBAL-MATH", "category": "Global rules", "rule_text": "The line items + tax must reconcile to total.", "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "GLOBAL-MATH", "category": "Global rules", "rule_text": "Trigger this rule if 'discrepancy' is not 0 OR if ('calculatedLineItemsSum' + 'taxAmount') does not equal 'total'. Any mismatch between line items and total MUST be flagged under this rule code.", "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
@@ -107,14 +108,16 @@ db.policies.insertMany([
     {
         "_id": "AUTONOMY-CEILING",
         "_key": "AUTONOMY-CEILING",
-        "value": { "rule_id": "AUTONOMY-CEILING", "category": "autonomy", "rule_text": "The agent may auto-approve only when the USD amount is **≤ $250**. Above this → human, *even at confidence 1.0*. ", "is_active": true, "created_at": new Date() },
+        //"value": { "rule_id": "AUTONOMY-CEILING", "category": "autonomy", "rule_text": "The agent may auto-approve only when the USD amount is **≤ $250**. Above this → human, *even at confidence 1.0*. ", "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "AUTONOMY-CEILING", "category": "autonomy", "rule_text": "The agent may auto-approve only when the USD amount is **<= $250**. Above this → human, *even at confidence 1.0*. ", "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
     {
         "_id": "AUTONOMY-CONFIDENCE",
         "_key": "AUTONOMY-CONFIDENCE",
-        "value": { "rule_id": "AUTONOMY-CONFIDENCE", "category": "autonomy", "rule_text": "The agent may auto-approve only when its `confidence` is **≥ 0.80**. Below → human.", "is_active": true, "created_at": new Date() },
+        //"value": { "rule_id": "AUTONOMY-CONFIDENCE", "category": "autonomy", "rule_text": "The agent may auto-approve only when its `confidence` is **≥ 0.80**. Below → human.", "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "AUTONOMY-CONFIDENCE", "category": "autonomy", "rule_text": "The agent may auto-approve only when its `confidence` is **<= 0.80**. Below → human.", "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },

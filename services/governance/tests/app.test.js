@@ -11,7 +11,7 @@ jest.mock('../resources/db', () => ({
 }));
 const { aiManager } = require('../managers/aiManager');
 jest.mock('../managers/aiManager', () => ({
-    aiManager: jest.fn().mockResolvedValue({ recommendation: 'AUTO_APPROVE', reason: 'Baseline auto-approve', triggered_rules: [] })
+    aiManager: jest.fn().mockResolvedValue('TRA1', { recommendation: 'AUTO_APPROVE', reason: 'Baseline auto-approve', triggered_rules: [] })
 }));
 
 const flushPromises = () => new Promise(setImmediate);
@@ -48,8 +48,8 @@ jest.mock('../engines/evaluateInvoiceWithAI', () => ({
     evaluateInvoiceWithAI: jest.fn()
 }));
 
-jest.mock('../engines/applyAutonomyOverride', () => ({
-    applyAutonomyOverride: jest.fn()
+jest.mock('../engines/applyOverride', () => ({
+    applyOverride: jest.fn()
 }));
 
 jest.mock('../resources/ragEngine', () => ({
@@ -75,7 +75,7 @@ describe('D5: One-command verification (Four journeys + Anti-cheese guards)', ()
 
         dbMock = jest.requireMock('../resources/db');
         evaluateAiMock = jest.requireMock('../engines/evaluateInvoiceWithAI');
-        overrideMock = jest.requireMock('../engines/applyAutonomyOverride');
+        overrideMock = jest.requireMock('../engines/applyOverride');
 
         dbMock.getPendingInvoices.mockResolvedValue([]);
         mockPubSubPublish.mockResolvedValue(true);
@@ -105,7 +105,7 @@ describe('D5: One-command verification (Four journeys + Anti-cheese guards)', ()
             triggered_rules: []
         });
 
-        overrideMock.applyAutonomyOverride.mockReturnValue({
+        overrideMock.applyOverride.mockReturnValue({
             recommendation: 'AUTO_APPROVE',
             reason: 'Final auto-approve',
             triggered_rules: []
@@ -170,8 +170,8 @@ describe('D5: One-command verification (Four journeys + Anti-cheese guards)', ()
         evaluateAiMock.evaluateInvoiceWithAI.mockReturnValue({ recommendation: 'AUTO_APPROVE', reason: 'Baseline auto-approve' });
 
 
-        const actualOverride = jest.requireActual('../engines/applyAutonomyOverride').applyAutonomyOverride;
-        overrideMock.applyAutonomyOverride.mockImplementation((aiRes, inv, rules) => {
+        const actualOverride = jest.requireActual('../engines/applyOverride').applyOverride;
+        overrideMock.applyOverride.mockImplementation((aiRes, inv, rules) => {
             return actualOverride(aiRes, inv, rules);
         });
 
@@ -226,7 +226,7 @@ describe('D5: One-command verification (Four journeys + Anti-cheese guards)', ()
     test('Journey 3: triggers deterministic HARD_STOP and completely skips LLM/AI execution threads', async () => {
         dbMock.getPolicies.mockResolvedValue([]);
         dbMock.getFxRates.mockResolvedValue({ USD: 1 });
-        overrideMock.applyAutonomyOverride.mockReturnValue({ recommendation: 'HUMAN_REVIEW', triggered_rules: ['HARD-STOP'] });
+        overrideMock.applyOverride.mockReturnValue({ recommendation: 'HUMAN_REVIEW', triggered_rules: ['HARD-STOP'] });
 
         await startFn();
 

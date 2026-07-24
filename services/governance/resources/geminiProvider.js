@@ -3,8 +3,8 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 class geminiProvider {
     async requestModel(systemPrompt, userPrompt) {
-        const modelName = "gemini-2.5-flash";
-
+        //const modelName = "gemini-2.5-flash";
+        const modelName = "gemini-3.6-flash";
         try {
             const response = await ai.models.generateContent({
                 model: modelName,

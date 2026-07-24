@@ -7,23 +7,37 @@ const daprHost = process.env.DAPR_HTTP_HOST || "governance-dapr-sidecar";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
 
 let vectorStore = null;
-
+let globalPolicyContext = [];
+function ruleToText(rule) {
+    return `Rule ID: ${rule.rule_id}
+category: ${rule.category}
+Description: ${rule.rule_text}`;
+}
 async function initRagEngine() {
     try {
-        console.log("🤖 [RAG Engine] Initializing pure JS memory vector store over policy...");
         const policies = await getPolicies();
-
-        const docs = policies.map(rule => {
-            const fullTextContent = `Rule ID: ${rule.rule_id} 
-category: ${rule.category.toLowerCase()} 
-Description: ${rule.rule_text}`;
-
+        const sharedRules = policies.filter(rule => ['global rules', 'autonomy'].includes(rule.category.toLowerCase()));
+        globalPolicyContext = sharedRules.map(rule => ruleToText(rule));
+        const categoryRules = policies.filter(rule => !['global rules', 'autonomy'].includes(rule.category.toLowerCase()));
+        const rulesByCategory = [];
+        categoryRules.forEach(rule => {
+            const categories = rule.category.replace(/\//g, "&").split('&').map(cat => cat.trim().toLowerCase());
+            categories.forEach(category => {
+                rulesByCategory.push({
+                    rule_id: rule.rule_id,
+                    category: category,
+                    rule_text: rule.rule_text
+                });
+            });
+        });
+        const docs = rulesByCategory.map(rule => {
+            const fullTextContent = ruleToText(rule);
             return new Document({
                 pageContent: fullTextContent,
                 metadata: {
                     id: rule.rule_id,
-                    category: rule.category.toLowerCase()
-                }
+                    category: rule.category
+                },
             });
         });
         const ollamaHost = "ollama-service";
@@ -44,9 +58,13 @@ Description: ${rule.rule_text}`;
 async function retrieveRelevantPolicies(invoice) {
     if (!vectorStore) return "";
     try {
-        const searchQuery = `Invoice check: category ${invoice.category}, vendor ${invoice.vendor}, total amount ${invoice.total}`;
-        const results = await vectorStore.similaritySearch(searchQuery, 4);
-        return results.map(doc => doc.pageContent).join('\n\n');
+        const searchQuery = `Compliance policies, spending thresholds, and limits`;
+        const targetCategory = invoice.category?.toLowerCase().trim();
+        const results = await vectorStore.similaritySearch(searchQuery, 4, (doc) => doc.metadata.category?.toLowerCase().trim() === targetCategory);
+        const resultString = results.map(doc => doc.pageContent).join('\n\n') + "\n\n" + globalPolicyContext.join('\n\n');
+
+        console.log("🔍 [RAG Engine] Retrieved relevant policies for invoice:", resultString);
+        return resultString;
     } catch (err) {
         console.error("[RAG Engine] Failed to retrieve policies:", err.message);
         return "";

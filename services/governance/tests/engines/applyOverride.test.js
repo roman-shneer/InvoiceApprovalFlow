@@ -1,5 +1,5 @@
-const { applyAutonomyOverride } = require('../../engines/applyAutonomyOverride');
-describe('applyAutonomyOverride Handler', () => {
+const { applyOverride } = require('../../engines/applyOverride');
+describe('applyOverride Handler', () => {
     const defaultAiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.95 };
     const defaultInvoice = { total: 100 };
 
@@ -7,7 +7,7 @@ describe('applyAutonomyOverride Handler', () => {
         test('applies custom currency limit via active policy threshold configuration', () => {
             const rules = [{ rule_id: 'GLOBAL-FX', threshold: 500 }];
             const invoice = { vendorKnown: true, currency: 'EUR', total: 600 };
-            const result = applyAutonomyOverride(defaultAiResult, invoice, rules);
+            const result = applyOverride(defaultAiResult, invoice, rules);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.triggered_rules).toContain('GLOBAL-FX');
         });
@@ -17,7 +17,7 @@ describe('applyAutonomyOverride Handler', () => {
             const fxRates = { USD: 1, EUR: 1.2 };
             const invoice = { vendorKnown: true, currency: 'EUR', total: 900 };
 
-            const result = applyAutonomyOverride(defaultAiResult, invoice, rules, fxRates[invoice.currency] || 1);
+            const result = applyOverride(defaultAiResult, invoice, rules, fxRates[invoice.currency] || 1);
             console.log("result", result);
             expect(result.recommendation).toBe("HUMAN_REVIEW");
             expect(result.triggered_rules).toContain("GLOBAL-FX");
@@ -27,7 +27,7 @@ describe('applyAutonomyOverride Handler', () => {
         test('applies custom receipt floor limit via policy values configuration', () => {
             const rules = [{ rule_id: 'GLOBAL-RECEIPT', value: 10 }];
             const invoice = { vendorKnown: true, amount: 15, receiptPresent: false };
-            const result = applyAutonomyOverride(defaultAiResult, invoice, rules);
+            const result = applyOverride(defaultAiResult, invoice, rules);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.triggered_rules).toContain('GLOBAL-RECEIPT');
         });
@@ -38,13 +38,13 @@ describe('applyAutonomyOverride Handler', () => {
         test('does not trigger GLOBAL-VENDOR for known vendors even when policy is active', () => {
             const invoice = { vendorKnown: true, vendor: 'Acme Corp' };
             const rules = [{ rule_id: 'GLOBAL-VENDOR' }];
-            const result = applyAutonomyOverride(defaultAiResult, invoice, rules);
+            const result = applyOverride(defaultAiResult, invoice, rules);
             expect(result.recommendation).toBe('AUTO_APPROVE');
         });
 
         test('triggers GLOBAL-FRAUD when fraud flag matches constraint', () => {
             const invoice = { vendorKnown: true, fraudSignal: true };
-            const result = applyAutonomyOverride(defaultAiResult, invoice, []);
+            const result = applyOverride(defaultAiResult, invoice, []);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.triggered_rules).toContain('GLOBAL-FRAUD');
         });
@@ -61,7 +61,7 @@ describe('applyAutonomyOverride Handler', () => {
             };
             const rules = [{ rule_id: 'GLOBAL-FRAUD' }];
 
-            const result = applyAutonomyOverride(defaultAiResult, invoice, rules);
+            const result = applyOverride(defaultAiResult, invoice, rules);
             expect(result.recommendation).toBe('AUTO_APPROVE');
         });
 
@@ -69,7 +69,7 @@ describe('applyAutonomyOverride Handler', () => {
             const invoice = { vendorKnown: true, missingMealInfo: true };
             const rules = [{ rule_id: 'MEAL-01' }];
 
-            const result = applyAutonomyOverride(defaultAiResult, invoice, rules);
+            const result = applyOverride(defaultAiResult, invoice, rules);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.triggered_rules).toContain('MEAL-01');
         });
@@ -90,7 +90,7 @@ describe('applyAutonomyOverride Handler', () => {
                 { value: { rule_id: 'GLOBAL-VENDOR' } },
                 { value: { rule_id: 'GLOBAL-FX', value: 1000 } }
             ];
-            const result = applyAutonomyOverride(defaultAiResult, invoice, rules);
+            const result = applyOverride(defaultAiResult, invoice, rules);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.triggered_rules).toContain('GLOBAL-FX');
 
@@ -100,20 +100,20 @@ describe('applyAutonomyOverride Handler', () => {
     describe('Fallback Default Constants Behavior', () => {
         test('forces human review if total exceeds default 250 ceiling', () => {
             const invoice = { total: 251 };
-            const result = applyAutonomyOverride(defaultAiResult, invoice, []);
+            const result = applyOverride(defaultAiResult, invoice, []);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.triggered_rules).toContain('AUTONOMY-CEILING');
         });
 
         test('forces human review if confidence falls below default 0.80 threshold', () => {
             const aiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.79 };
-            const result = applyAutonomyOverride(aiResult, defaultInvoice, []);
+            const result = applyOverride(aiResult, defaultInvoice, []);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.triggered_rules).toContain('AUTONOMY-CONFIDENCE');
         });
 
         test('allows auto approve when within safe fallback defaults boundaries', () => {
-            const result = applyAutonomyOverride(defaultAiResult, defaultInvoice, []);
+            const result = applyOverride(defaultAiResult, defaultInvoice, []);
             expect(result.recommendation).toBe('AUTO_APPROVE');
         });
     });
@@ -128,7 +128,7 @@ describe('applyAutonomyOverride Handler', () => {
                 }
             ];
             const invoice = { total: 75 };
-            const result = applyAutonomyOverride(defaultAiResult, invoice, rules);
+            const result = applyOverride(defaultAiResult, invoice, rules);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.reason).toContain('ceiling of $50');
         });
@@ -142,7 +142,7 @@ describe('applyAutonomyOverride Handler', () => {
                 }
             ];
             const aiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.95 };
-            const result = applyAutonomyOverride(aiResult, defaultInvoice, rules);
+            const result = applyOverride(aiResult, defaultInvoice, rules);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.reason).toContain('threshold of 0.99');
         });

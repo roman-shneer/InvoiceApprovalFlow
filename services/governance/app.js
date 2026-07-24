@@ -1,7 +1,7 @@
 const express = require('express');
 const { DaprServer, DaprClient } = require('@dapr/dapr');
-const { aiManager } = require('./managers/aiManager');
-const { applyAutonomyOverride } = require('./engines/applyAutonomyOverride');
+const { aiManager, anonymizeInvoice } = require('./managers/aiManager');
+const { applyOverride } = require('./engines/applyOverride');
 const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
 const { getPolicies, saveInvoiceToMongo, getPendingInvoices, getFxRate } = require('./resources/db');
 const { initRagEngine, retrieveRelevantPolicies } = require('./resources/ragEngine');
@@ -49,20 +49,22 @@ async function processInvoice(trackingId, invoice) {
     await publishInvoiceNotification(invoice, NOTIFICATION_PROCESSED_TOPIC);
     try {
         const activeRules = await getPolicies();
+        const rate = await resolveFxRate(invoice);
         // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)        
         let aiResult;
         try {
             const dynamicPolicyContext = await retrieveRelevantPolicies(invoice);
-            aiResult = await aiManager(invoice, dynamicPolicyContext);
+            const anonymizedInvoice = anonymizeInvoice(invoice, rate);
+            aiResult = await aiManager(trackingId, anonymizedInvoice, dynamicPolicyContext);
         } catch (err) {
             aiResult = evaluateInvoiceWithAI(invoice, activeRules);
             console.log(`[${trackingId}] ERROR: AI failure context: ${err.message}. Triggered static heuristics.`);
         }
 
         // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
-        const rate = await resolveFxRate(invoice);
 
-        invoice.audit_metadata = applyAutonomyOverride(aiResult, invoice, activeRules, rate);
+
+        invoice.audit_metadata = applyOverride(aiResult, invoice, activeRules, rate);
 
         invoice.status = invoice.audit_metadata.recommendation;
         const aiApproved = invoice.status === 'AUTO_APPROVE';

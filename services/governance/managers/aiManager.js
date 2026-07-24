@@ -2,7 +2,7 @@ const { groqProvider } = require('../resources/groqProvider');
 const { ollamaProvider } = require('../resources/ollamaProvider');
 const { geminiProvider } = require('../resources/geminiProvider');
 
-function anonymizeInvoice(invoice) {
+function anonymizeInvoice(invoice, rate) {
     if (!invoice || typeof invoice !== 'object') return invoice;
 
     let cleanInvoice = JSON.parse(JSON.stringify(invoice));
@@ -39,14 +39,20 @@ function anonymizeInvoice(invoice) {
             delete cleanInvoice[field];
         }
     });
+
+    cleanInvoice.calculatedLineItemsSum = cleanInvoice.lineItems?.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+    cleanInvoice.discrepancy = cleanInvoice.calculatedLineItemsSum + (cleanInvoice.taxAmount || 0) - (cleanInvoice.total || 0);
+
+    if (invoice.currency != 'USD') {
+        cleanInvoice.amountInUSD = cleanInvoice.total * rate;
+    }
+
     return cleanInvoice;
 }
 
 
-async function aiManager(invoice, dynamicPolicyContext) {
-    const cleanInvoice = anonymizeInvoice(invoice);
-
-    const userPrompt = `Analyze this invoice payload: ` + JSON.stringify(cleanInvoice);
+async function aiManager(tracking_id, invoice, dynamicPolicyContext) {
+    const userPrompt = `Analyze this invoice payload: ` + JSON.stringify(invoice);
 
 
     let provider;
@@ -59,11 +65,11 @@ async function aiManager(invoice, dynamicPolicyContext) {
         provider = new ollamaProvider();
     }
     const systemPrompt = provider.generateSystemPrompt(dynamicPolicyContext);
-    console.log(`[${invoice.tracking_id}]SystemPrompt: ${systemPrompt}`);
-    console.log(`[${invoice.tracking_id}]UserPrompt: ${userPrompt}`);
+    console.log(`[${tracking_id}]SystemPrompt: ${systemPrompt}` + "\n");
+    console.log(`[${tracking_id}]UserPrompt: ${userPrompt}` + "\n");
     const result = await provider.requestModel(systemPrompt, userPrompt);
-    console.log(`[${invoice.tracking_id}] AI Model Result: ${JSON.stringify(result)}`);
+    console.log(`[${tracking_id}] AI Model Result: ${JSON.stringify(result)}` + "\n");
     return result;
 }
 
-module.exports = { aiManager };
+module.exports = { aiManager, anonymizeInvoice };
