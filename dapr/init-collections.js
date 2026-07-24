@@ -107,17 +107,25 @@ db.policies.insertMany([
     {
         "_id": "AUTONOMY-CEILING",
         "_key": "AUTONOMY-CEILING",
-        "value": { "rule_id": "AUTONOMY-CEILING", "category": "autonomy", "rule_text": 250, "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "AUTONOMY-CEILING", "category": "autonomy", "rule_text": "The agent may auto-approve only when the USD amount is **≤ $250**. Above this → human, *even at confidence 1.0*. ", "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
     {
         "_id": "AUTONOMY-CONFIDENCE",
         "_key": "AUTONOMY-CONFIDENCE",
-        "value": { "rule_id": "AUTONOMY-CONFIDENCE", "category": "autonomy", "rule_text": 0.80, "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "AUTONOMY-CONFIDENCE", "category": "autonomy", "rule_text": "The agent may auto-approve only when its `confidence` is **≥ 0.80**. Below → human.", "is_active": true, "created_at": new Date() },
+        "_etag": crypto.randomUUID(),
+        "_ttl": null
+    },
+    {
+        "_id": "AUTONOMY-HARDSTOPS",
+        "_key": "AUTONOMY-HARDSTOPS",
+        "value": { "rule_id": "AUTONOMY-HARDSTOPS", "category": "autonomy", "rule_text": "Regardless of amount/confidence, these **always** force a human: new/unknown vendor (`GLOBAL-VENDOR`), FX hard stop (`GLOBAL-FX`), math mismatch (`GLOBAL-MATH`), any fraud signal (`GLOBAL-FRAUD`), missing required receipt (`GLOBAL-RECEIPT`), missing required info (`MEAL-01`/`MEAL-02`).", "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     }
+
 ]);
 db.policies.createIndex({ "_key": 1 }, { unique: true });
 

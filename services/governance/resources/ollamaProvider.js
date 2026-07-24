@@ -85,10 +85,10 @@ You are strictly FORBIDDEN from putting objects inside the rules array. It must 
 
 Exact template to copy:
 {
-    "rules": ["RULE-ID"],
+    "rules": ["RULE-ID"], // An array of rule IDs that were triggered or violated.
     "reason": "Short text.",
     "recommendation": "VERDICT",
-    "confidence": 0.8
+    "confidence": 0.8 // A float between 0 and 1 indicating your confidence in the recommendation.
 }
 
 CRITICAL: Start with '{' immediately. Do not write descriptions inside the array.

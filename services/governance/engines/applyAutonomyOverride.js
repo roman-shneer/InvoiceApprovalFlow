@@ -128,7 +128,7 @@ function applyAutonomyOverride(aiResult, invoice, rules, fxRate = 1) {
     if (reasons.length > 0) {
         const uniqueReasons = [...new Set(reasons)];
         return {
-            recommendation: recommendation === 'REJECT' || 'HUMAN_REVIEW',
+            recommendation: recommendation === 'REJECT' ? 'REJECT' : 'HUMAN_REVIEW',
             aiResult: aiResult,
             reason: uniqueReasons.join('; '),
             triggered_rules: [...new Set(triggeredRules)],

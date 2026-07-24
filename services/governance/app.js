@@ -59,9 +59,6 @@ async function processInvoice(trackingId, invoice) {
             console.log(`[${trackingId}] ERROR: AI failure context: ${err.message}. Triggered static heuristics.`);
         }
 
-
-        console.log(`[${trackingId}] AI Result: ${JSON.stringify(aiResult)}`);
-
         // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
         const rate = await resolveFxRate(invoice);
 

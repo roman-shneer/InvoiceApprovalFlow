@@ -46,7 +46,7 @@ class groqProvider {
                 rawContent = rawContent.split("</think>").pop().trim();
             }
             rawContent = rawContent.replace(/```json/g, "").replace(/```/g, "").trim();
-
+            console.log("[Groq Raw Content]:", rawContent);
             let aiResponse;
             try {
                 aiResponse = JSON.parse(rawContent);
@@ -114,6 +114,8 @@ CRITICAL: The "thought_process" field MUST contain ONLY the rule IDs evaluated. 
     "confidence": 1.0,
     "recommendation": "Either 'AUTO_APPROVE' or 'HUMAN_REVIEW'"
 }
+
+CRITICAL: Start with '{' immediately. Do not write descriptions inside the array.
 `;
         return systemPrompt;
     }
