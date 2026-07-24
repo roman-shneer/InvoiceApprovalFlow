@@ -4,8 +4,8 @@ const { aiManager, anonymizeInvoice } = require('./managers/aiManager');
 const { applyOverride } = require('./engines/applyOverride');
 const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
 const { getPolicies, saveInvoiceToMongo, getPendingInvoices, getFxRate } = require('./resources/db');
-const { initRagEngine, retrieveRelevantPolicies } = require('./resources/ragEngine');
-
+const { RagEngine } = require('./resources/ragEngine');
+const ragEngine = new RagEngine();
 const appPort = process.env.APP_PORT || "8002";
 const daprHost = process.env.DAPR_HOST || "127.0.0.1";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
@@ -50,10 +50,9 @@ async function processInvoice(trackingId, invoice) {
     try {
         const activeRules = await getPolicies();
         const rate = await resolveFxRate(invoice);
-        // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)        
         let aiResult;
         try {
-            const dynamicPolicyContext = await retrieveRelevantPolicies(invoice);
+            const dynamicPolicyContext = await ragEngine.retrieveRelevantPolicies(invoice, activeRules);
             const anonymizedInvoice = anonymizeInvoice(invoice, rate);
             aiResult = await aiManager(trackingId, anonymizedInvoice, dynamicPolicyContext);
         } catch (err) {
@@ -139,8 +138,6 @@ async function startServerWithRetry() {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
             await server.start();
-
-            initRagEngine(); // <--- start indexing policies at startup
             return;
         } catch (err) {
             const msg = err && err.message ? err.message : String(err);

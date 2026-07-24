@@ -83,6 +83,10 @@ function applyOverride(aiResult, invoice, rules, fxRate = 1) {
     if (hasRule('MEAL-03') && aiResult.triggered_rules.includes('MEAL-03')) {
         recommendation = 'REJECT';
     }
+    if (hasRule('SAAS-01') && amount > getThreshold('SAAS-01', 200)) {
+        triggeredRules.push("SAAS-01");
+        reasons.push(`Software/SaaS subscription exceeds $${getThreshold('SAAS-01', 200)} per month limit.`);
+    }
 
     // 6. GLOBAL-MATH Policy Enforcement Check (Triggers strictly on actual mathematical mismatches)
     if (invoice.lineItems && invoice.lineItems.length > 0) {
@@ -103,6 +107,7 @@ function applyOverride(aiResult, invoice, rules, fxRate = 1) {
     //AUTONOMY-CEILING
     const ceilingRule = activeRules.find(r => r.rule_id === 'AUTONOMY-CEILING' || r.key === 'AUTONOMY-CEILING' || (r.value && r.value.rule_id === 'AUTONOMY-CEILING'));
     const ceilingThreshold = extractNumericThreshold(ceilingRule, 250);
+
     if (amount > ceilingThreshold) {
         reasons.push(`Invoice amount $${amount} exceeds autonomy ceiling of $${ceilingThreshold}.`);
         triggeredRules.push('AUTONOMY-CEILING');

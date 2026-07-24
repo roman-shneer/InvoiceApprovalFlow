@@ -52,11 +52,6 @@ jest.mock('../engines/applyOverride', () => ({
     applyOverride: jest.fn()
 }));
 
-jest.mock('../resources/ragEngine', () => ({
-    initRagEngine: jest.fn().mockResolvedValue(true),
-    retrieveRelevantPolicies: jest.fn().mockResolvedValue("Mocked standard RAG ceiling text context")
-}));
-
 describe('D5: One-command verification (Four journeys + Anti-cheese guards)', () => {
 
     let targetCallbacks = {};

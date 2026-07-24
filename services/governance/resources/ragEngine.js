@@ -13,62 +13,80 @@ function ruleToText(rule) {
 category: ${rule.category}
 Description: ${rule.rule_text}`;
 }
-async function initRagEngine() {
-    try {
-        const policies = await getPolicies();
-        const sharedRules = policies.filter(rule => ['global rules', 'autonomy'].includes(rule.category.toLowerCase()));
-        globalPolicyContext = sharedRules.map(rule => ruleToText(rule));
-        const categoryRules = policies.filter(rule => !['global rules', 'autonomy'].includes(rule.category.toLowerCase()));
-        const rulesByCategory = [];
-        categoryRules.forEach(rule => {
-            const categories = rule.category.replace(/\//g, "&").split('&').map(cat => cat.trim().toLowerCase());
-            categories.forEach(category => {
-                rulesByCategory.push({
-                    rule_id: rule.rule_id,
-                    category: category,
-                    rule_text: rule.rule_text
+class RagEngine {
+    policies = [];
+    embedModel = process.env.AI_EMBEDDING_MODEL_NAME || "nomic-embed-text";
+
+    constructor() {
+
+        this.policies = [];
+    }
+
+
+    comparePolicies(policies) {
+        return JSON.stringify(this.policies) === JSON.stringify(policies);
+    }
+
+    async init(policies) {
+        try {
+            const sharedRules = policies.filter(rule => ['global rules', 'autonomy'].includes(rule.category.toLowerCase()));
+            globalPolicyContext = sharedRules.map(rule => ruleToText(rule));
+            const categoryRules = policies.filter(rule => !['global rules', 'autonomy'].includes(rule.category.toLowerCase()));
+            const rulesByCategory = [];
+            categoryRules.forEach(rule => {
+                const categories = rule.category.replace(/\//g, "&").split('&').map(cat => cat.trim().toLowerCase());
+                categories.forEach(category => {
+                    rulesByCategory.push({
+                        rule_id: rule.rule_id,
+                        category: category,
+                        rule_text: rule.rule_text
+                    });
                 });
             });
-        });
-        const docs = rulesByCategory.map(rule => {
-            const fullTextContent = ruleToText(rule);
-            return new Document({
-                pageContent: fullTextContent,
-                metadata: {
-                    id: rule.rule_id,
-                    category: rule.category
-                },
+            const docs = rulesByCategory.map(rule => {
+                const fullTextContent = ruleToText(rule);
+                return new Document({
+                    pageContent: fullTextContent,
+                    metadata: {
+                        id: rule.rule_id,
+                        category: rule.category
+                    },
+                });
             });
-        });
-        const ollamaHost = "ollama-service";
-        const ollamaPort = "11434";
-        const embeddings = new OllamaEmbeddings({
-            model: process.env.AI_EMBEDDING_MODEL_NAME || "nomic-embed-text",
-            baseUrl: `http://${ollamaHost}:${ollamaPort}`
-        });
+            const ollamaHost = "ollama-service";
+            const ollamaPort = "11434";
+            const embeddings = new OllamaEmbeddings({
+                model: this.embedModel,
+                baseUrl: `http://${ollamaHost}:${ollamaPort}`
+            });
 
-        vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
-        console.log(`✅ [RAG Engine] Successfully indexed ${docs.length} segments with pure JS store.`);
-    } catch (err) {
-        console.error("❌ [RAG Engine] Initialization failed:", err.message);
-        if (err.cause) console.error("🔍 Детали ошибки:", err.cause);
+            vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
+            console.log(`✅ [RAG Engine] Successfully indexed ${docs.length} segments with pure JS store.`);
+        } catch (err) {
+            console.error("❌ [RAG Engine] Initialization failed:", err.message);
+            if (err.cause) console.error("🔍 Детали ошибки:", err.cause);
+        }
+    }
+
+    async retrieveRelevantPolicies(invoice, activeRules) {
+        if (this.policies.length === 0 || !this.comparePolicies(activeRules)) {
+            await this.init(activeRules);
+        }
+
+        if (!vectorStore) return "";
+        try {
+            const searchQuery = `Compliance policies, spending thresholds, and limits`;
+            const targetCategory = invoice.category?.toLowerCase().trim();
+            const results = await vectorStore.similaritySearch(searchQuery, 4, (doc) => doc.metadata.category?.toLowerCase().trim() === targetCategory);
+            const resultString = results.map(doc => doc.pageContent).join('\n\n') + "\n\n" + globalPolicyContext.join('\n\n');
+
+            console.log("🔍 [RAG Engine] Retrieved relevant policies for invoice:", resultString);
+            return resultString;
+        } catch (err) {
+            console.error("[RAG Engine] Failed to retrieve policies:", err.message);
+            return "";
+        }
     }
 }
 
-async function retrieveRelevantPolicies(invoice) {
-    if (!vectorStore) return "";
-    try {
-        const searchQuery = `Compliance policies, spending thresholds, and limits`;
-        const targetCategory = invoice.category?.toLowerCase().trim();
-        const results = await vectorStore.similaritySearch(searchQuery, 4, (doc) => doc.metadata.category?.toLowerCase().trim() === targetCategory);
-        const resultString = results.map(doc => doc.pageContent).join('\n\n') + "\n\n" + globalPolicyContext.join('\n\n');
-
-        console.log("🔍 [RAG Engine] Retrieved relevant policies for invoice:", resultString);
-        return resultString;
-    } catch (err) {
-        console.error("[RAG Engine] Failed to retrieve policies:", err.message);
-        return "";
-    }
-}
-
-module.exports = { initRagEngine, retrieveRelevantPolicies };
+module.exports = { RagEngine };
