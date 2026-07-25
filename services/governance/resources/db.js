@@ -1,7 +1,7 @@
 
 
 const { DaprClient } = require('@dapr/dapr');
-const daprHost = "127.0.0.1";
+const daprHost = process.env.DAPR_HTTP_HOST || "127.0.0.1";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
 
 const client = new DaprClient({
