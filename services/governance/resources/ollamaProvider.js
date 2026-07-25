@@ -16,41 +16,7 @@ class ollamaProvider extends AbstractProvider {
         console.log(`[${trackingId}] ollamaProvider policyComplect:||${rulesText}||\n`);
         console.log(`[${trackingId}] ollamaProvider userPrompt:||${userPrompt}||\n`);
         const systemPrompt = this.generateSystemPrompt(rulesText);
-        const aiResult = await this.requestOllama(trackingId, systemPrompt, userPrompt)
-        return aiResult;
-        //TODO
-        /*
-        const results = [];
-        for (const policyComplect of policyComplects) {
-            if (policyComplect.trim() !== "") {
-                console.log(`[${trackingId}] ollamaProvider policyComplect:||${policyComplect}||`);
-                console.log(`[${trackingId}] ollamaProvider userPrompt:||${userPrompt}||`);
-                const systemPrompt = this.generateSystemPrompt(policyComplect);
-                results.push(await this.requestOllama(trackingId, systemPrompt, userPrompt));
-            }
-        }
-        const violatedResults = results.filter((res) => ['HUMAN_REVIEW', 'REJECT'].includes(res.recommendation));
-
-        if (violatedResults.length > 0) {
-            return {
-                recommendation: violatedResults[0].recommendation,
-                reason: violatedResults.map((res) => res.reason).join('; '),
-                triggered_rules: violatedResults.flatMap((res) => res.triggered_rules),
-                confidence: Math.min(...violatedResults.map((res) => res.confidence)),
-                model: this.modelName
-            };
-        } else {
-            return {
-                recommendation: "AUTO_APPROVE",
-                reason: "No policy violations detected.",
-                triggered_rules: [],
-                confidence: 1.0,
-                model: this.modelName
-            };
-        }
-
-
-        return results;*/
+        return await this.requestOllama(trackingId, systemPrompt, userPrompt)
     }
 
     async requestOllama(trackingId, systemPrompt, userPrompt) {
@@ -74,7 +40,6 @@ class ollamaProvider extends AbstractProvider {
             });
 
             let rawContent = response.message.content.trim();
-
             // Defensive regex to strip markdown block ticks if Llama 3 hallucinates them
             if (rawContent.startsWith("```")) {
                 rawContent = rawContent.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
@@ -118,58 +83,32 @@ class ollamaProvider extends AbstractProvider {
     }
 
     generateSystemPrompt(dynamicPolicyContext) {
-        /*
-         const systemPrompt = `You are an expert corporate FinOps Compliance Auditor. 
-    Your task is to analyze the user's invoice payload against the active corporate policies below.
-    
-    [ACTIVE CORPORATE POLICIES]
-    <policies>
-    ${dynamicPolicyContext || "No specific policy sections matched the query. Follow general financial guidelines."}
-    </policies>
-    
-    [STRICT VERDICT MAPPING]
-    - If "rules" is [] -> "recommendation" MUST BE "AUTO_APPROVE"
-    - If "rules" has items -> "recommendation" MUST BE "HUMAN_REVIEW"
-    
-    Output ONLY raw JSON. No markdown, no formatting. Keep "reason" under 10 words. 
-    You are strictly FORBIDDEN from putting objects inside the rules array. It must be a flat array of strings.
-    
-    Exact template to copy:
-    {
-        "rules": [], // An array of rule IDs that were triggered or violated.
-        "reason": "Short text.",
-        "recommendation": "VERDICT",
-        "confidence": 0.8 // A float between 0 and 1 indicating your confidence in the recommendation.
-    }
-    
-    CRITICAL: Start with '{' immediately. Do not write descriptions inside the array.
-    `;
-    
-        */
-        const systemPrompt = `Check the invoice for compliance with corporate rules.
 
-[ACTIVE CORPORATE POLICIES]
-<policies>
-${dynamicPolicyContext || "No specific policy sections matched the query. Follow general financial guidelines."}
-</policies>
+        const systemPrompt = `You are an expert corporate FinOps Compliance Auditor. 
+        Your task is to analyze the user's invoice payload against the active corporate policies below.
 
-[STRICT VERDICT MAPPING]
-- If "rules" is [] -> "recommendation" MUST BE "AUTO_APPROVE"
-- If "rules" has items -> "recommendation" MUST BE "HUMAN_REVIEW"
+        [ACTIVE CORPORATE POLICIES]
+        <policies>
+        ${dynamicPolicyContext || "No specific policy sections matched the query. Follow general financial guidelines."}
+        </policies>
 
-Output ONLY raw JSON. No markdown, no formatting. Keep "reason" under 10 words. 
-You are strictly FORBIDDEN from putting objects inside the rules array. It must be a flat array of strings.
+        [STRICT VERDICT MAPPING]
+        - If "rules" is [] -> "recommendation" MUST BE "AUTO_APPROVE"
+        - If "rules" has items -> "recommendation" MUST BE "HUMAN_REVIEW"
 
-Exact template to copy:
-{
-    "rules": [], // An array of rule IDs that were triggered or violated.
-    "reason": "Short text.",
-    "recommendation": "VERDICT",
-    "confidence": 0.8 // A float between 0 and 1 indicating your confidence in the recommendation.
-}
+        Output ONLY raw JSON. No markdown, no formatting. Keep "reason" under 10 words. 
+        You are strictly FORBIDDEN from putting objects inside the rules array. It must be a flat array of strings.
 
-CRITICAL: Start with '{' immediately. Do not write descriptions inside the array.
-`;
+        Exact template to copy:
+        {
+            "rules": [], // An array of rule IDs that were triggered or violated.
+            "reason": "Short text.",
+            "recommendation": "VERDICT",
+            "confidence": 0.8 // A float between 0 and 1 indicating your confidence in the recommendation.
+        }
+
+        CRITICAL: Start with '{' immediately. Do not write descriptions inside the array.
+        `;
 
         return systemPrompt;
     }

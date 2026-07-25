@@ -22,8 +22,8 @@ class RagEngine {
     }
 
     ruleToText(rule) {
-        return `Rule ID: ${rule.rule_id}`
-            + `\nDescription: ${rule.rule_text}`;
+        return `Rule ID: ${rule.rule_id}` + "\n"
+            + `Description: ${rule.rule_text}`;
     }
 
 
@@ -35,8 +35,9 @@ class RagEngine {
         try {
             const rulesByCategory = [];
             policies.forEach(rule => {
-                const categories = rule.category.replace(/\//g, "&").split('&').map(cat => cat.trim().toLowerCase());
+                const categories = rule.category.replace(/\//g, "&").split('&');
                 categories.forEach(category => {
+                    category = category.trim().toLowerCase();
                     rulesByCategory.push({
                         rule_id: rule.rule_id,
                         category: category,
@@ -45,11 +46,16 @@ class RagEngine {
                 });
             });
             const docs = rulesByCategory.map(rule => {
+                const receipt = rule.rule_text.toLowerCase().includes("receipt");
+                const vendor = rule.rule_text.toLowerCase().includes("vendor");
+
                 return new Document({
                     pageContent: this.ruleToText(rule),
                     metadata: {
                         id: rule.rule_id,
-                        category: rule.category
+                        category: rule.category,
+                        //receipt: receipt,
+                        //vendor: vendor
                     },
                 });
             });
@@ -75,12 +81,14 @@ class RagEngine {
             const searchQuery = `Compliance policies, spending thresholds, and limits`;
             const targetCategory = invoice.category?.toLowerCase().trim();
 
-            const results = await this.vectorStore.similaritySearch(searchQuery, 4, (doc) => doc.metadata.category?.toLowerCase().trim() === targetCategory);
-            const resultString = results.map(doc => doc.pageContent).join('\n\n');
-            return resultString;
+            const results = await this.vectorStore.similaritySearch(searchQuery, 10, (doc) => {
+                const category = doc.metadata.category?.toLowerCase().trim();
+                return ([targetCategory, 'global rules', 'autonomy'].includes(category));
+            });
+            return results.map(doc => doc.pageContent);
         } catch (err) {
             console.error("[RAG Engine] Failed to retrieve policies:", err.message);
-            return "";
+            return [];
         }
     }
 }

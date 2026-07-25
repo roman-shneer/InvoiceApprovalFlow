@@ -52,28 +52,11 @@ async function processInvoice(trackingId, invoice) {
         const rate = await resolveFxRate(invoice);
         let aiResult;
         try {
-            const globalRules = activeRules
-                .filter(rule => rule.category.toLowerCase() === 'global rules')
-                .map(rule => ragEngine.ruleToText(rule));
 
-            const autonomyRules = activeRules
-                .filter(rule => rule.category.toLowerCase() === 'autonomy')
-                .map(rule => ragEngine.ruleToText(rule));
-
-            const categoryRules = activeRules
-                .filter(rule => !['global rules', 'autonomy'].includes(rule.category.toLowerCase()));
-
-            const ragPolicies = await ragEngine.retrieveRelevantPolicies(invoice, categoryRules);
-
-            const policyComplects = [
-                ragPolicies,
-                globalRules.join('\n\n'),
-                autonomyRules.join('\n\n')
-            ];
-
+            const ragPolicies = await ragEngine.retrieveRelevantPolicies(invoice, activeRules);
             const anonymizedInvoice = anonymizeInvoice(invoice, rate);
             const provider = await aiManager();
-            aiResult = await provider.requestModel(trackingId, anonymizedInvoice, policyComplects);
+            aiResult = await provider.requestModel(trackingId, anonymizedInvoice, ragPolicies);
 
         } catch (err) {
             aiResult = evaluateInvoiceWithAI(invoice, activeRules);
