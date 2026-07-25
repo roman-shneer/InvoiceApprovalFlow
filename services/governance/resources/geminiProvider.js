@@ -1,13 +1,21 @@
 const { GoogleGenAI, Type } = require('@google/genai');
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const AbstractProvider = require('./abstractProvider');
 
-class geminiProvider {
-    async requestModel(systemPrompt, userPrompt) {
-        //const modelName = "gemini-2.5-flash";
-        const modelName = "gemini-3.6-flash";
+
+class geminiProvider extends AbstractProvider {
+    aiEngine = null;
+    modelName = "gemini-3.6-flash";
+    constructor() {
+        super();
+        this.aiEngine = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });;
+    }
+    async requestModel(trackingId, anonymizedInvoice, policyComplects) {
+
+        const systemPrompt = this.generateSystemPrompt(policyComplects.join('\n\n'));
+        const userPrompt = this.generateUserPrompt(anonymizedInvoice);
         try {
-            const response = await ai.models.generateContent({
-                model: modelName,
+            const response = await this.aiEngine.models.generateContent({
+                model: this.modelName,
                 contents: userPrompt,
                 config: {
                     systemInstruction: systemPrompt,
@@ -55,7 +63,7 @@ class geminiProvider {
                 "reason": aiResponse.reason || "Evaluated by Gemini successfully.",
                 "confidence": parseFloat(aiResponse.confidence ?? 1.0),
                 "recommendation": aiResponse.recommendation || "HUMAN_REVIEW",
-                "model": modelName
+                "model": this.modelName
             };
 
         } catch (error) {
@@ -65,7 +73,7 @@ class geminiProvider {
                 "reason": `Gemini API execution failed. Audit forced to manual review. (Details: ${error.message})`,
                 "confidence": 0.0,
                 "recommendation": "HUMAN_REVIEW",
-                "model": modelName
+                "model": this.modelName
             };
         }
     }
@@ -103,7 +111,6 @@ You MUST respond strictly in a valid JSON object format. Follow this exact seque
         return systemPrompt;
 
     }
-
 }
 
 

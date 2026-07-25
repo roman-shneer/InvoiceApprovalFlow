@@ -52,22 +52,40 @@ async function processInvoice(trackingId, invoice) {
         const rate = await resolveFxRate(invoice);
         let aiResult;
         try {
-            const dynamicPolicyContext = await ragEngine.retrieveRelevantPolicies(invoice, activeRules);
+            const globalRules = activeRules
+                .filter(rule => rule.category.toLowerCase() === 'global rules')
+                .map(rule => ragEngine.ruleToText(rule));
+
+            const autonomyRules = activeRules
+                .filter(rule => rule.category.toLowerCase() === 'autonomy')
+                .map(rule => ragEngine.ruleToText(rule));
+
+            const categoryRules = activeRules
+                .filter(rule => !['global rules', 'autonomy'].includes(rule.category.toLowerCase()));
+
+            const ragPolicies = await ragEngine.retrieveRelevantPolicies(invoice, categoryRules);
+
+            const policyComplects = [
+                ragPolicies,
+                globalRules.join('\n\n'),
+                autonomyRules.join('\n\n')
+            ];
+
             const anonymizedInvoice = anonymizeInvoice(invoice, rate);
-            aiResult = await aiManager(trackingId, anonymizedInvoice, dynamicPolicyContext);
+            const provider = await aiManager();
+            aiResult = await provider.requestModel(trackingId, anonymizedInvoice, policyComplects);
+
         } catch (err) {
             aiResult = evaluateInvoiceWithAI(invoice, activeRules);
             console.log(`[${trackingId}] ERROR: AI failure context: ${err.message}. Triggered static heuristics.`);
         }
-
-        // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
 
 
         invoice.audit_metadata = applyOverride(aiResult, invoice, activeRules, rate);
 
         invoice.status = invoice.audit_metadata.recommendation;
         const aiApproved = invoice.status === 'AUTO_APPROVE';
-        // 5. Atomic state synchronization layer execution
+
 
         await saveInvoiceToMongo(invoice);
         await publishInvoiceNotification(invoice, NOTIFICATION_PROCESSED_TOPIC);

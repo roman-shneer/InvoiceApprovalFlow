@@ -1,16 +1,24 @@
 const Groq = require("groq-sdk");
-const groq = new Groq({
-    apiKey: process.env.GROQ_API_KEY
-});
-class groqProvider {
+const AbstractProvider = require('./abstractProvider');
+class groqProvider extends AbstractProvider {
+    aiEngine = null;
+    modelName = "openai/gpt-oss-120b"
+    constructor() {
+        super();
+        this.aiEngine = new Groq({
+            apiKey: process.env.GROQ_API_KEY
+        });;
+    }
 
-    async requestModel(systemPrompt, userPrompt) {
-        //const modelName = "qwen/qwen3.6-27b";    
-        const modelName = "openai/gpt-oss-120b";
+    async requestModel(trackingId, anonymizedInvoice, policyComplects) {
+        const systemPrompt = this.generateSystemPrompt(policyComplects.join('\n\n'));
+        console.log(`[${trackingId}] groqProvider systemPrompt:||${systemPrompt}||`);
+        const userPrompt = this.generateUserPrompt(anonymizedInvoice);
+        console.log(`[${trackingId}] groqProvider userPrompt:||${userPrompt}||`);
 
         try {
-            const completion = await groq.chat.completions.create({
-                model: modelName,
+            const completion = await this.aiEngine.chat.completions.create({
+                model: this.modelName,
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userPrompt }
@@ -24,7 +32,7 @@ class groqProvider {
             if (!rawContent) {
                 throw new Error("Empty response from Groq SDK");
             }
-            console.log("groqProvider rawContent:", rawContent);
+            console.log(`[${trackingId}] groqProvider rawContent:||${rawContent}||`);
 
             const aiResponse = JSON.parse(rawContent);
 
@@ -33,7 +41,7 @@ class groqProvider {
                 "reason": aiResponse.reason,
                 "confidence": aiResponse.confidence,
                 "recommendation": aiResponse.recommendation,
-                "model": modelName
+                "model": this.modelName
             };
 
         } catch (error) {
@@ -43,7 +51,7 @@ class groqProvider {
                 "reason": `Groq SDK execution failed: ${error.message}`,
                 "confidence": 0.0,
                 "recommendation": "HUMAN_REVIEW",
-                "model": modelName
+                "model": this.modelName
             };
         }
     }
@@ -51,7 +59,7 @@ class groqProvider {
 
     getFallbackResponse(modelName, internalReason) {
         return {
-            "rules": ["API_COMPLIANCE_FALLBACK"],
+            "triggered_rules": ["API_COMPLIANCE_FALLBACK"],
             "reason": `System safety fallback triggered. Audit forced to manual review. (Details: ${internalReason})`,
             "confidence": 0.0,
             "recommendation": "HUMAN_REVIEW",

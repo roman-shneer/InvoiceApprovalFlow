@@ -30,7 +30,8 @@ db.policies.insertMany([
     {
         "_id": "TRAVEL-01",
         "_key": "TRAVEL-01",
-        "value": { "rule_id": "TRAVEL-01", "category": "Travel", "rule_text": "Economy flights and standard hotels are policy-eligible.", "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "TRAVEL-01", "category": "Travel", "rule_text": "Non-economy flights or luxury hotels. Trigger ONLY IF class is First/Business OR hotel is Luxury.", "is_active": true, "created_at": new Date() },
+        //"value": { "rule_id": "TRAVEL-01", "category": "Travel", "rule_text": "Economy flights and standard hotels are policy-eligible.", "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
@@ -121,13 +122,14 @@ db.policies.insertMany([
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
+    /*
     {
         "_id": "AUTONOMY-HARDSTOPS",
         "_key": "AUTONOMY-HARDSTOPS",
         "value": { "rule_id": "AUTONOMY-HARDSTOPS", "category": "autonomy", "rule_text": "Regardless of amount/confidence, these **always** force a human: new/unknown vendor (`GLOBAL-VENDOR`), FX hard stop (`GLOBAL-FX`), math mismatch (`GLOBAL-MATH`), any fraud signal (`GLOBAL-FRAUD`), missing required receipt (`GLOBAL-RECEIPT`), missing required info (`MEAL-01`/`MEAL-02`).", "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
-    }
+    }*/
 
 ]);
 db.policies.createIndex({ "_key": 1 }, { unique: true });

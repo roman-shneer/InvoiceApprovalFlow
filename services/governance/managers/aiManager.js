@@ -19,6 +19,7 @@ function anonymizeInvoice(invoice, rate) {
     if (cleanInvoice.id) cleanInvoice.id = maskId(cleanInvoice.id);
     if (cleanInvoice.invoiceNumber) cleanInvoice.invoiceNumber = maskId(cleanInvoice.invoiceNumber);
     const excessFields = [
+        'id',
         'notes',
         'note',
         'audit_metadata',
@@ -42,34 +43,38 @@ function anonymizeInvoice(invoice, rate) {
 
     cleanInvoice.calculatedLineItemsSum = cleanInvoice.lineItems?.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
     cleanInvoice.discrepancy = cleanInvoice.calculatedLineItemsSum + (cleanInvoice.taxAmount || 0) - (cleanInvoice.total || 0);
+    if (cleanInvoice.discrepancy === 0) {
+        delete cleanInvoice.discrepancy;
+    }
+    if (cleanInvoice.taxAmount === 0) {
+        delete cleanInvoice.taxAmount;
+    }
 
     if (invoice.currency != 'USD') {
         cleanInvoice.amountInUSD = cleanInvoice.total * rate;
     }
-
     return cleanInvoice;
 }
 
 
-async function aiManager(tracking_id, invoice, dynamicPolicyContext) {
-    const userPrompt = `Analyze this invoice payload: ` + JSON.stringify(invoice);
+async function aiManager() {
+
 
 
     let provider;
+
     if (process.env.GROQ_API_KEY != null && process.env.GROQ_API_KEY.trim() !== "") {
+
         provider = new groqProvider();
     } else if (process.env.GEMINI_API_KEY != null && process.env.GEMINI_API_KEY.trim() !== "") {
+
         provider = new geminiProvider();
     }
     else {
+
         provider = new ollamaProvider();
     }
-    const systemPrompt = provider.generateSystemPrompt(dynamicPolicyContext);
-    console.log(`[${tracking_id}]SystemPrompt: ${systemPrompt}` + "\n");
-    console.log(`[${tracking_id}]UserPrompt: ${userPrompt}` + "\n");
-    const result = await provider.requestModel(systemPrompt, userPrompt);
-    console.log(`[${tracking_id}] AI Model Result: ${JSON.stringify(result)}` + "\n");
-    return result;
+    return provider;
 }
 
 module.exports = { aiManager, anonymizeInvoice };

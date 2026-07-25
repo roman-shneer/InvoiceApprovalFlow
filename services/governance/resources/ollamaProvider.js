@@ -1,21 +1,71 @@
 const { Ollama } = require('ollama');
+const AbstractProvider = require('./abstractProvider');
+class ollamaProvider extends AbstractProvider {
+    aiEngine = null;
+    modelName = process.env.AI_MODEL_NAME || 'llama3';
+    constructor() {
+        super();
+        console.log("process.env.OLLAMA_API_URL", process.env.OLLAMA_API_URL);
+        const API_URL = process.env.OLLAMA_API_URL || 'http://127.0.0.1:11434';
+        this.aiEngine = new Ollama({ host: API_URL });;
+    }
 
-const ollama = new Ollama({ host: 'http://ollama-service:11434' });
-class ollamaProvider {
+    async requestModel(trackingId, anonymizedInvoice, policyComplects) {
+        const userPrompt = this.generateUserPrompt(anonymizedInvoice);
+        const rulesText = policyComplects.join("\n\n");
+        console.log(`[${trackingId}] ollamaProvider policyComplect:||${rulesText}||\n`);
+        console.log(`[${trackingId}] ollamaProvider userPrompt:||${userPrompt}||\n`);
+        const systemPrompt = this.generateSystemPrompt(rulesText);
+        const aiResult = await this.requestOllama(trackingId, systemPrompt, userPrompt)
+        return aiResult;
+        //TODO
+        /*
+        const results = [];
+        for (const policyComplect of policyComplects) {
+            if (policyComplect.trim() !== "") {
+                console.log(`[${trackingId}] ollamaProvider policyComplect:||${policyComplect}||`);
+                console.log(`[${trackingId}] ollamaProvider userPrompt:||${userPrompt}||`);
+                const systemPrompt = this.generateSystemPrompt(policyComplect);
+                results.push(await this.requestOllama(trackingId, systemPrompt, userPrompt));
+            }
+        }
+        const violatedResults = results.filter((res) => ['HUMAN_REVIEW', 'REJECT'].includes(res.recommendation));
 
-    async requestModel(systemPrompt, userPrompt) {
+        if (violatedResults.length > 0) {
+            return {
+                recommendation: violatedResults[0].recommendation,
+                reason: violatedResults.map((res) => res.reason).join('; '),
+                triggered_rules: violatedResults.flatMap((res) => res.triggered_rules),
+                confidence: Math.min(...violatedResults.map((res) => res.confidence)),
+                model: this.modelName
+            };
+        } else {
+            return {
+                recommendation: "AUTO_APPROVE",
+                reason: "No policy violations detected.",
+                triggered_rules: [],
+                confidence: 1.0,
+                model: this.modelName
+            };
+        }
+
+
+        return results;*/
+    }
+
+    async requestOllama(trackingId, systemPrompt, userPrompt) {
         // Construct system prompt embedding the dynamic text segments fetched via the RAG retrieval cursor      
         try {
-            const response = await ollama.chat({
-                model: process.env.AI_MODEL_NAME || 'llama3',
+            const response = await this.aiEngine.chat({
+                model: this.modelName,
                 messages: [
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: userPrompt }
                 ],
                 options: {
-                    temperature: 0.1,
+                    temperature: 0.0,
                     top_p: 0.1,
-                    num_predict: 250,    // JSON-answer
+                    num_predict: 1000,    // JSON-answer
 
                     num_ctx: 512, //memory buffer
                     num_thread: 4,//cpu count
@@ -29,7 +79,7 @@ class ollamaProvider {
             if (rawContent.startsWith("```")) {
                 rawContent = rawContent.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
             }
-            console.log("ollamaProvider rawContent:", rawContent);
+            console.log(`[${trackingId}] ollamaProvider rawContent:||${rawContent}||`);
             let aiResult
             try {
                 aiResult = JSON.parse(rawContent);
@@ -52,7 +102,7 @@ class ollamaProvider {
                 reason: aiResult.reason || "Evaluated by local RAG-augmented AI engine successfully.",
                 confidence: parseFloat(aiResult.confidence || 0),
                 triggered_rules: Array.isArray(aiResult.rules) ? aiResult.rules : [],
-                model: process.env.AI_MODEL_NAME || 'llama3'
+                model: this.modelName
             };
 
         } catch (err) {
@@ -62,20 +112,47 @@ class ollamaProvider {
                 reason: `Local RAG AI Analysis failed or timed out: ${err.message}. Forced routing to manual queue.`,
                 confidence: 0,
                 triggered_rules: [],
-                model: process.env.AI_MODEL_NAME || 'llama3'
+                model: this.modelName
             };
         }
     }
 
     generateSystemPrompt(dynamicPolicyContext) {
+        /*
+         const systemPrompt = `You are an expert corporate FinOps Compliance Auditor. 
+    Your task is to analyze the user's invoice payload against the active corporate policies below.
+    
+    [ACTIVE CORPORATE POLICIES]
+    <policies>
+    ${dynamicPolicyContext || "No specific policy sections matched the query. Follow general financial guidelines."}
+    </policies>
+    
+    [STRICT VERDICT MAPPING]
+    - If "rules" is [] -> "recommendation" MUST BE "AUTO_APPROVE"
+    - If "rules" has items -> "recommendation" MUST BE "HUMAN_REVIEW"
+    
+    Output ONLY raw JSON. No markdown, no formatting. Keep "reason" under 10 words. 
+    You are strictly FORBIDDEN from putting objects inside the rules array. It must be a flat array of strings.
+    
+    Exact template to copy:
+    {
+        "rules": [], // An array of rule IDs that were triggered or violated.
+        "reason": "Short text.",
+        "recommendation": "VERDICT",
+        "confidence": 0.8 // A float between 0 and 1 indicating your confidence in the recommendation.
+    }
+    
+    CRITICAL: Start with '{' immediately. Do not write descriptions inside the array.
+    `;
+    
+        */
+        const systemPrompt = `Check the invoice for compliance with corporate rules.
 
-        const systemPrompt = `You are an expert corporate FinOps Compliance Auditor. 
-Your task is to analyze the user's invoice payload against the following corporate policies extracted dynamically from the company's official handbook.
-
-[ACTIVE CORPORATE POLICIES (RETRIEVED VIA RAG)]
+[ACTIVE CORPORATE POLICIES]
 <policies>
 ${dynamicPolicyContext || "No specific policy sections matched the query. Follow general financial guidelines."}
 </policies>
+
 [STRICT VERDICT MAPPING]
 - If "rules" is [] -> "recommendation" MUST BE "AUTO_APPROVE"
 - If "rules" has items -> "recommendation" MUST BE "HUMAN_REVIEW"
@@ -85,7 +162,7 @@ You are strictly FORBIDDEN from putting objects inside the rules array. It must 
 
 Exact template to copy:
 {
-    "rules": ["RULE-ID"], // An array of rule IDs that were triggered or violated.
+    "rules": [], // An array of rule IDs that were triggered or violated.
     "reason": "Short text.",
     "recommendation": "VERDICT",
     "confidence": 0.8 // A float between 0 and 1 indicating your confidence in the recommendation.
