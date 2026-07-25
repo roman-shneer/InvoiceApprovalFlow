@@ -121,17 +121,20 @@ services:
       dockerfile: ./services/governance/Dockerfile
     ports:
       - "8002:8002"
+      - "3505:3500"
+      - "50002:50001"
     container_name: governance-service
     hostname: governance-service
     environment:
       - APP_PORT=8002
       - DAPR_HTTP_HOST=127.0.0.1
       - DAPR_HTTP_PORT=3500
-      - MONGO_DB={MONGO_DB}
+      - MONGO_DB=${MONGO_DB}
       - AI_MODEL_NAME=${AI_MODEL_NAME}
       - GROQ_API_KEY=${GROQ_API_KEY}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - AI_REQUEST_DELAY=${AI_REQUEST_DELAY}
+      - OLLAMA_API_URL=${OLLAMA_API_URL}
     volumes:
       - ./services/governance:/app
       - /app/node_modules
