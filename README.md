@@ -130,9 +130,9 @@ Production secrets are kept out of source control. For local development on `loc
    ```powershell
    kubectl cluster-info
    ```
-2. Navigate to the root directory (`C:\projects\zion\InvoiceApprovalFlow`) and apply all Kubernetes manifests:
+2. Navigate to the root directory (`InvoiceApprovalFlow`) and apply all Kubernetes manifests:
    ```powershell
-   kubectl apply -f .
+   kubectl apply -f ./k8s/
    ```
    *(Note: If your manifests live inside a dedicated folder, use `kubectl apply -f ./k8s/` instead).*
 
@@ -152,6 +152,9 @@ kubectl get service
 
 ### Forward port to local machine ###
 kubectl port-forward service/management-service 8080:80
+
+### Stop/Delete all ###
+kubectl delete all,configmap,secret --all --namespace=default
 
 ```
 

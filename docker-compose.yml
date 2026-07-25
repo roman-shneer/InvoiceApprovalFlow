@@ -117,8 +117,8 @@ services:
   ### Governance & AI Service ###
   governance-service:
     build:
-      context: .
-      dockerfile: ./services/governance/Dockerfile
+      context: ./services/governance/.
+      dockerfile: Dockerfile
     ports:
       - "8002:8002"
       - "3505:3500"

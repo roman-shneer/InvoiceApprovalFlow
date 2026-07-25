@@ -22,13 +22,17 @@ spec:
         command: ["sh", "-c"]
         args:
         - |
-          ollama serve & 
-          echo 'Starting Ollama server...'; 
-          sleep 5; 
-          echo 'Pulling target model...'; 
-          ollama pull $(AI_MODEL_NAME);
-          echo 'Model download complete! Keeping container alive...';
-          wait
+          ollama serve &
+          echo "Waiting for Ollama server to respond..."
+          until ollama list > /dev/null 2>&1; do
+            sleep 2
+          done
+          echo "Pulling target model: ${AI_MODEL_NAME}..."
+          ollama pull ${AI_MODEL_NAME}
+          echo "Pulling embed model: nomic-embed-text..."
+          ollama pull nomic-embed-text
+          echo "Model download complete! Keeping container alive..."
+          wait $!
         env:
         - name: AI_MODEL_NAME
           valueFrom:
@@ -38,9 +42,10 @@ spec:
         volumeMounts:
         - name: ollama-storage
           mountPath: /root/.ollama
-
       volumes:
       - name: ollama-storage
+        # NOTE: For local testing emptyDir is fine, but PersistentVolumeClaim 
+        # prevents redownloading models on pod restart.
         emptyDir: {}
 ---
 apiVersion: v1
