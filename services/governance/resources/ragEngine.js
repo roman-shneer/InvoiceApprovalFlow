@@ -46,16 +46,11 @@ class RagEngine {
                 });
             });
             const docs = rulesByCategory.map(rule => {
-                const receipt = rule.rule_text.toLowerCase().includes("receipt");
-                const vendor = rule.rule_text.toLowerCase().includes("vendor");
-
                 return new Document({
                     pageContent: this.ruleToText(rule),
                     metadata: {
                         id: rule.rule_id,
                         category: rule.category,
-                        //receipt: receipt,
-                        //vendor: vendor
                     },
                 });
             });
