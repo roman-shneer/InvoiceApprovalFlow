@@ -11,14 +11,14 @@ import InvoicesConclusion from './InvoicesConclusion.vue';
             <tr>
                 <td>tracking_id</td>
                 <td>invoiceNumber</td>
-                <td>correlation_id</td>
-                <td>submitter</td>
-                <td>submitted</td>
+                
+                
+                <td>submitted</td>                                
                 <td>tax</td>
-                <td>total</td>
                 <td>expected</td>
                 <td>expected reason</td>
                 <td>ai status</td>
+                <td>ai reason</td>
                 <td>audit status</td>   
                 <td>audit reason</td>                
                 <td v-if="role=='submitter'">payment</td>                
@@ -26,15 +26,20 @@ import InvoicesConclusion from './InvoicesConclusion.vue';
             </tr>
             <tr v-for="invoice of invoices" :key="invoice.key || invoice.tracking_id || invoice.id">
                 <td @click="openInvoice(invoice)" title="tracking id">{{ invoice.tracking_id }}</td>
-                <td @click="openInvoice(invoice)" title="invoice number">{{ invoice.invoiceNumber }}</td>
-                <td @click="openInvoice(invoice)" title="correlation id">{{invoice.correlation_id}}</td>
-                <td @click="openInvoice(invoice)" title="submitter">{{ invoice.submitter}}</td>
-                <td @click="openInvoice(invoice)" title="submitted">{{ renderDate(invoice.submitted_at)}}</td>
-                <td @click="openInvoice(invoice)" title="tax">{{renderCurrency(invoice.currency)}}{{invoice.taxAmount}}</td>
-                <td @click="openInvoice(invoice)" title="total">{{renderCurrency(invoice.currency)}}{{invoice.total}}</td>
+                <td @click="openInvoice(invoice)" title="invoice number">{{ invoice.invoiceNumber }}</td>                                
+                <td @click="openInvoice(invoice)" title="submitted">{{ renderDate(invoice.submitted_at)}}</td>                
+                <td @click="openInvoice(invoice)" title="total">{{renderCurrency(invoice.currency)}}{{invoice.total}}</td>                
                 <td @click="openInvoice(invoice)" title="expected route">{{ renderStatus(invoice?.expected?.route??'') }}</td>
-                <td @click="openInvoice(invoice)" title="expected reason">{{ getExpectedReason(invoice) }}</td>
+                <td @click="openInvoice(invoice)" title="expected reason">
+                    {{ invoice?.expected?.reason??'' }}
+                    <br/>
+                    <font color="navy" style="font-size:90%;">{{ invoice?.expected?.violations ? invoice?.expected?.violations.join(', ') : '' }}</font>
+                </td>
                 <td @click="openInvoice(invoice)" :title="JSON.stringify(invoice?.audit_metadata?.aiResult)">{{ renderStatus(invoice?.audit_metadata?.aiResult?.recommendation ?? '') }}</td>
+                <td @click="openInvoice(invoice)" :title="JSON.stringify(invoice?.audit_metadata?.aiResult)">
+                    {{ invoice?.audit_metadata?.aiResult?.reason }}<br/>
+                    <font color="navy" style="font-size:90%;">{{ invoice?.audit_metadata?.aiResult?.triggered_rules ? invoice?.audit_metadata?.aiResult?.triggered_rules.join(', ') : '' }}</font>
+                </td>
                 <td @click="openInvoice(invoice)" title="audit status">{{ renderStatus(invoice.status??'') }}</td>
                 <td @click="openInvoice(invoice)" title="audit reason">{{ invoice?.audit_metadata?.reason }}</td>                
                 <td @click="openInvoice(invoice)" title="payment status" v-if="role=='submitter'" >{{ renderPaymentStatus(invoice) }}</td>                
