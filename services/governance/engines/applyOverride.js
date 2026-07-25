@@ -83,9 +83,14 @@ function applyOverride(aiResult, invoice, rules, fxRate = 1) {
     if (hasRule('MEAL-03') && aiResult.triggered_rules.includes('MEAL-03')) {
         recommendation = 'REJECT';
     }
-    if (hasRule('SAAS-01') && amount > getThreshold('SAAS-01', 200)) {
+    if (hasRule('SAAS-01') && invoice.category === 'saas' && amount > getThreshold('SAAS-01', 200)) {
         triggeredRules.push("SAAS-01");
         reasons.push(`Software/SaaS subscription exceeds $${getThreshold('SAAS-01', 200)} per month limit.`);
+    }
+
+    if ((hasRule('HW-01') || hasRule('HW-02')) && invoice.category === 'hardware' && amount > getThreshold('HW-01', 1000)) {
+        triggeredRules.push("HW-01");
+        reasons.push(`Hardware purchase exceeds $${getThreshold('HW-01', 1000)} limit.`);
     }
 
     // 6. GLOBAL-MATH Policy Enforcement Check (Triggers strictly on actual mathematical mismatches)
