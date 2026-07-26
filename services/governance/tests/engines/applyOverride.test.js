@@ -18,7 +18,6 @@ describe('applyOverride Handler', () => {
             const invoice = { vendorKnown: true, currency: 'EUR', total: 900 };
 
             const result = applyOverride(defaultAiResult, invoice, rules, fxRates[invoice.currency] || 1);
-            console.log("result", result);
             expect(result.recommendation).toBe("HUMAN_REVIEW");
             expect(result.triggered_rules).toContain("GLOBAL-FX");
             expect(result.reason).toContain("~USD 1080.00");

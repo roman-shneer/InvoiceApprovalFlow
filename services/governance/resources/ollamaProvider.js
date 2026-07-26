@@ -5,7 +5,6 @@ class ollamaProvider extends AbstractProvider {
     modelName = process.env.AI_MODEL_NAME || 'llama3';
     constructor() {
         super();
-        console.log("process.env.OLLAMA_API_URL", process.env.OLLAMA_API_URL);
         const API_URL = process.env.OLLAMA_API_URL || 'http://127.0.0.1:11434';
         this.aiEngine = new Ollama({ host: API_URL });;
     }

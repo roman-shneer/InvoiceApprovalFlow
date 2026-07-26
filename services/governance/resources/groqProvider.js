@@ -26,7 +26,7 @@ class groqProvider extends AbstractProvider {
                 temperature: 0,
                 max_completion_tokens: 1024,
             });
-            console.log("groqProvider completion:", completion);
+
             const rawContent = completion.choices[0]?.message?.content;
 
             if (!rawContent) {

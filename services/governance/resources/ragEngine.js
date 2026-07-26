@@ -65,7 +65,6 @@ class RagEngine {
 
     async retrieveRelevantPolicies(invoice, activeRules) {
         if (this.policies.length === 0 || !this.comparePolicies(activeRules)) {
-            console.log(`Reinit rules: ${activeRules.length} rules`);
             await this.init(activeRules);
             this.policies = activeRules; // Update the policies after initialization
         }
