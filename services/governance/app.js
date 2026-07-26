@@ -45,7 +45,9 @@ async function processInvoice(trackingId, invoice) {
     let allTriggeredRules = [];
     let allReasons = [];
     console.log(`[${trackingId}] Processing`);
-    await saveInvoiceToMongo((invoice.status = 'PROCESSING', invoice));
+    invoice.status = 'PROCESSING';
+    invoice.processing_date = Date.now();
+    await saveInvoiceToMongo(invoice);
     await publishInvoiceNotification(invoice, NOTIFICATION_PROCESSED_TOPIC);
     try {
         const activeRules = await getPolicies();
@@ -124,7 +126,8 @@ async function startWorkerLoop() {
 
 
 async function checkStuckInvoices() {
-    const invoices = await getPendingInvoices('PROCESSING', 1000);
+    const thirtyMinAgoMs = Date.now() - (30 * 60 * 1000);
+    const invoices = await getPendingInvoices('PROCESSING', 1000, thirtyMinAgoMs);
 
     for (const invoice of invoices) {
         console.log(`[${invoice.tracking_id}] Reprocessing pending invoice`);
