@@ -12,8 +12,6 @@ class ollamaProvider extends AbstractProvider {
     async requestModel(trackingId, anonymizedInvoice, policyComplects) {
         const userPrompt = this.generateUserPrompt(anonymizedInvoice);
         const rulesText = policyComplects.join("\n\n");
-        console.log(`[${trackingId}] ollamaProvider policyComplect:||${rulesText}||\n`);
-        console.log(`[${trackingId}] ollamaProvider userPrompt:||${userPrompt}||\n`);
         const systemPrompt = this.generateSystemPrompt(rulesText);
         return await this.requestOllama(trackingId, systemPrompt, userPrompt)
     }
@@ -43,8 +41,7 @@ class ollamaProvider extends AbstractProvider {
             if (rawContent.startsWith("```")) {
                 rawContent = rawContent.replace(/^```json\s*/i, "").replace(/```$/, "").trim();
             }
-            console.log(`[${trackingId}] ollamaProvider rawContent:||${rawContent}||`);
-            let aiResult
+            let aiResult;
             try {
                 aiResult = JSON.parse(rawContent);
             } catch (parseErr) {

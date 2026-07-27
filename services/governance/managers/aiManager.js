@@ -58,23 +58,13 @@ function anonymizeInvoice(invoice, rate) {
 
 
 async function aiManager() {
-
-
-
-    let provider;
-
     if (process.env.GROQ_API_KEY != null && process.env.GROQ_API_KEY.trim() !== "") {
-
-        provider = new groqProvider();
+        return new groqProvider();
     } else if (process.env.GEMINI_API_KEY != null && process.env.GEMINI_API_KEY.trim() !== "") {
-
-        provider = new geminiProvider();
+        return new geminiProvider();
+    } else {
+        return new ollamaProvider();
     }
-    else {
-
-        provider = new ollamaProvider();
-    }
-    return provider;
 }
 
 module.exports = { aiManager, anonymizeInvoice };

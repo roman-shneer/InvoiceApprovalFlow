@@ -11,11 +11,8 @@ const daprHost = process.env.DAPR_HOST || "127.0.0.1";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
 const PUB_SUB_NAME = "approval-pubsub";
 const PUB_SUB_TOPIC = 'invoice.submitted'
+const PUB_SUB_TOPIC_PENDING = 'invoice.pending';
 const NOTIFICATION_PROCESSED_TOPIC = "invoice.processed";
-const NOTIFICATION_RETRY_TOPIC = "invoice.failed-to-save";
-const NOTIFICATION_PAYMENT_REQUESTED_TOPIC = "payment.requested";
-
-const MAX_RETRIES = 5;
 
 const daprClient = new DaprClient({
     daprHost: daprHost,
@@ -28,6 +25,7 @@ const server = new DaprServer({
     serverPort: appPort,
     client: daprClient
 });
+
 
 async function resolveFxRate(invoice) {
     if (invoice.currency !== 'USD') {
@@ -45,9 +43,6 @@ async function processInvoice(trackingId, invoice) {
     let allTriggeredRules = [];
     let allReasons = [];
     console.log(`[${trackingId}] Processing`);
-    invoice.status = 'PROCESSING';
-    invoice.processing_date = Date.now();
-    await saveInvoiceToMongo(invoice);
     await publishInvoiceNotification(invoice, NOTIFICATION_PROCESSED_TOPIC);
     try {
         const activeRules = await getPolicies();
@@ -74,22 +69,6 @@ async function processInvoice(trackingId, invoice) {
 
         await saveInvoiceToMongo(invoice);
         await publishInvoiceNotification(invoice, NOTIFICATION_PROCESSED_TOPIC);
-
-        // 6. Payment initiation routing boundary logic
-        if (aiApproved) {
-            try {
-                if (!invoice.payment_requested) {
-                    invoice.payment_requested = true;
-                    await publishInvoiceNotification(invoice, NOTIFICATION_PAYMENT_REQUESTED_TOPIC);
-                    console.log(`[${trackingId}] Published payment.requested for ${trackingId}`);
-                } else {
-                    console.log(`[${trackingId}] payment.requested already set; skipping publish`);
-                }
-            } catch (err) {
-                console.error(`[${trackingId}] Failed to publish payment.requested:`, err.message);
-            }
-        }
-
     } catch (error) {
         console.error(`[${trackingId}] Critical failure inside background worker:`, error.message);
         try {
@@ -107,32 +86,6 @@ async function processInvoice(trackingId, invoice) {
         }
     }
 
-}
-
-async function startWorkerLoop() {
-    const delayMs = (process.env.AI_REQUEST_DELAY && process.env.AI_REQUEST_DELAY.trim() !== "") ? parseInt(process.env.AI_REQUEST_DELAY) : 250;
-    while (true) {
-        const invoices = await getPendingInvoices('PENDING', 1);
-        if (invoices && invoices.length > 0) {
-            const invoice = invoices[0];
-            const trackingId = invoice.tracking_id || invoice.id;
-            await processInvoice(trackingId, invoice);
-            await new Promise(res => setTimeout(res, delayMs));
-        } else {
-            await new Promise(res => setTimeout(res, 2000));
-        }
-    }
-}
-
-
-async function checkStuckInvoices() {
-    const thirtyMinAgoMs = Date.now() - (30 * 60 * 1000);
-    const invoices = await getPendingInvoices('PROCESSING', 1000, thirtyMinAgoMs);
-
-    for (const invoice of invoices) {
-        console.log(`[${invoice.tracking_id}] Reprocessing pending invoice`);
-        await publishInvoiceNotification(invoice, PUB_SUB_TOPIC);
-    }
 }
 
 async function startServerWithRetry() {
@@ -158,81 +111,19 @@ async function startServerWithRetry() {
 }
 
 async function start() {
+    //subscribe to the "invoice.pending" topic to process pending invoices
     await server.pubsub.subscribe(
         PUB_SUB_NAME,
-        PUB_SUB_TOPIC,
+        PUB_SUB_TOPIC_PENDING,
         async (eventData) => {
-            try {
-                const invoice = eventData && eventData.data ? eventData.data : eventData;
-                console.log(`[${invoice.tracking_id}] Incoming invoice received via Pub/Sub`);
-                //WILL BE PROCESSED in TOUR startWorkerLoop() function, so we just save it to mongo and return SUCCESS            
-                saveInvoiceToMongo((invoice.status = 'PENDING', invoice)).catch(async (dbErr) => {
-                    //if mongo dead - send to pubsub invoice.failed-to-save to retry later
-                    console.error(`[${invoice.tracking_id}] Failed asynchronous background Mongo save:`, dbErr.message);
-                    publishInvoiceNotification({
-                        invoice,
-                        error: dbErr.message,
-                        retryCount: 0
-                    }, NOTIFICATION_RETRY_TOPIC).catch(pubSubErr => {
-                        console.error("CRITICAL ERROR: Pub/Sub is also unavailable!", pubSubErr.message);
-                    });
-                });
-                return "SUCCESS";
-
-
-            } catch (err) {
-                console.error("!!! ERROR IN INVOICE PROCESSING STREAM !!!", err.message);
-                return "RETRY";
-            }
+            const invoice = eventData && eventData.data ? eventData.data : eventData;
+            const trackingId = invoice.tracking_id || invoice.id;
+            await processInvoice(trackingId, invoice);
+            console.log(`[${invoice.tracking_id}] Incoming invoice.pending received via Pub/Sub`);
+            return "SUCCESS";
         }
-    );
-
-    // Subscribe to the "invoice.failed-to-save" topic to handle invoices that failed to save to MongoDB
-    await server.pubsub.subscribe(
-        PUB_SUB_NAME,
-        NOTIFICATION_RETRY_TOPIC,
-        async (eventData) => {
-            const payload = eventData?.data || eventData;
-            const invoice = payload.invoice;
-            let currentRetry = payload.retryCount !== undefined ? payload.retryCount : 1;
-            const trackingId = invoice.tracking_id || invoice.id || "unknown";
-
-            try {
-                console.log(`[${trackingId}] Attempting to re-save invoice from the backup queue...`);
-                await saveInvoiceToMongo(invoice);
-                console.log(`[${trackingId}] Successfully saved! MongoDB has recovered.`);
-                return "SUCCESS";
-            } catch (err) {
-                console.error(`[${trackingId}] The database is still there. Leaving it in the Redis queue for retry.`, err.message);
-                if (currentRetry >= MAX_RETRIES) {
-                    console.error(`[${trackingId}] CRITICAL ERROR: Invoice exceeded ${MAX_RETRIES} attempts. Sending to log/human.`);
-                    await saveToFile(invoice, err.message);
-                    return "SUCCESS";
-                }
-                currentRetry++;
-                await publishInvoiceNotification({
-                    invoice,
-                    error: err.message,
-                    retryCount: currentRetry
-                }, NOTIFICATION_RETRY_TOPIC).catch(pubSubErr => {
-                    console.error("CRITICAL ERROR: Even Redis is unavailable for retry!", pubSubErr.message);
-                });
-                return "SUCCESS";
-            }
-        }
-    );
-
+    )
     await startServerWithRetry();
-    // Replay any previously stuck PROCESSING invoices   
-    if (process.env.NODE_ENV !== 'test') {
-        try {
-            await checkStuckInvoices();
-        } catch (err) {
-            console.error(`[governance-startup] Failed to replay pending invoices:`, err.message);
-        }
-        startWorkerLoop();
-    }
-
 }
 
 async function saveToFile(invoice, message) {
