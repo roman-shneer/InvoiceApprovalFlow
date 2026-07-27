@@ -10,9 +10,11 @@ const PORT = process.env.PORT || 8001;
 
 const STATE_STORE_NAME = 'approval-state';
 const PUB_SUB_NAME = 'approval-pubsub';
-const PUB_SUB_TOPIC = 'invoice.submitted';
+//const PUB_SUB_TOPIC = 'invoice.submitted';
 const MONGO_STATE_STORE = 'mongo-state';
 const MONGO_INVOICES_STORE = 'mongo-invoices';
+const NOTIFICATION_PROCESSED_TOPIC = "invoice.processed";
+
 const daprClient = new DaprClient({ daprHost: DAPR_HOST, daprPort: DAPR_PORT });
 const app = express();
 
@@ -43,33 +45,6 @@ function logMessage(level, correlationId, message) {
     });
 }
 
-async function dispatchOutboxEvent(outboxEvent, correlationId) {
-    try {
-        await daprClient.pubsub.publish(
-            outboxEvent.pubsub_name,
-            outboxEvent.topic,
-            outboxEvent.payload
-        );
-        await daprClient.state.save(MONGO_STATE_STORE, [
-            {
-                key: outboxEvent.event_id,
-                value: {
-                    ...outboxEvent,
-                    processed: true,
-                    processed_at: new Date().toISOString()
-                }
-            }
-        ]);
-
-
-        logMessage('INFO', correlationId, `Dispatched outbox event ${outboxEvent.event_id} to ${outboxEvent.topic}`);
-        return true;
-    } catch (error) {
-        logMessage('ERROR', correlationId, `Outbox dispatch failed for ${outboxEvent.event_id}: ${error.message}`);
-        return false;
-    }
-}
-
 function decodeJwtPayload(token) {
     if (!token) return null;
     try {
@@ -84,6 +59,33 @@ function decodeJwtPayload(token) {
     } catch (err) {
         console.error('[JWT Error] Failed to decode token payload:', err.message);
         return null;
+    }
+}
+
+async function saveInvoiceToMongo(invoice) {
+
+    const pendingInvoice = {
+        ...invoice,
+        createdAt: new Date().toISOString()
+    };
+    try {
+        await daprClient.state.save(MONGO_INVOICES_STORE, [
+            {
+                key: pendingInvoice.tracking_id,
+                value: pendingInvoice
+            }
+        ]);
+
+    } catch (dbErr) {
+        console.log(`[${invoice.tracking_id}] ERROR: ${invoice.correlation_id}: Failed to save audit record in MongoDB: ${dbErr.message}`);
+    }
+}
+async function publishInvoiceNotification(pendingInvoice, topic = NOTIFICATION_PROCESSED_TOPIC) {
+    if (!pendingInvoice) return;
+    try {
+        await daprClient.pubsub.publish(PUB_SUB_NAME, topic, pendingInvoice);
+    } catch (err) {
+        console.error(`[${pendingInvoice?.tracking_id}] Failed to publish invoice processed notification:`, err.message);
     }
 }
 
@@ -172,15 +174,12 @@ app.post('/api/v1/expenses', async (req, res) => {
             status: 'PENDING'
         };
 
-        const outboxEventId = `outbox_${crypto.randomUUID()}`;
-        const outboxEvent = {
-            event_id: outboxEventId,
-            pubsub_name: PUB_SUB_NAME,
-            topic: PUB_SUB_TOPIC,
-            payload: eventPayload,
-            processed: false,
-            created_at: new Date().toISOString()
-        };
+        saveInvoiceToMongo((eventPayload.status = 'PENDING', eventPayload)).catch(async (dbErr) => {
+            //TODO: Implement retry mechanism for failed Mongo saves. For now, log the error and continue processing.
+            console.error(`[${eventPayload.tracking_id}] Failed asynchronous background Mongo save:`, dbErr.message);
+        });
+        await publishInvoiceNotification(eventPayload, NOTIFICATION_PROCESSED_TOPIC);
+        //require for duplication detection - save to state store with TTL
         await daprClient.state.save(STATE_STORE_NAME, [
             {
                 key: idempotencyKey,
@@ -192,22 +191,7 @@ app.post('/api/v1/expenses', async (req, res) => {
                 metadata: { ttlInSeconds: '86400' }
             }
         ]);
-        await daprClient.state.save(MONGO_STATE_STORE, [
-            {
-                key: outboxEventId,
-                value: outboxEvent
-            }
-        ]);
 
-
-        //SAVING INVOICE TO MONGO
-        const pendingInvoice = {
-            ...eventPayload,
-            createdAt: new Date().toISOString()
-        };
-
-        logMessage('INFO', correlationId, `Transactionally saved invoice and outbox event ${outboxEventId}`);
-        await dispatchOutboxEvent(outboxEvent, correlationId);
 
         return res.status(202).json({
             tracking_id: trackingId,
@@ -230,41 +214,9 @@ app.use((req, res) => {
 });
 
 module.exports = app;
-async function runOutboxSweeper() {
-    try {
-        // search in mongo stuck outbox
-        const response = await daprClient.state.query(MONGO_STATE_STORE, {
-            filter: {
-                "EQ": { "value.processed": false }
-            },
-            page: { limit: 50 }
-        });
-
-        if (!response.results || response.results.length === 0) {
-            console.log("Not Found stuck outbox events");
-            return;
-        }
-        console.log("Found stuck outbox events:", response.results.length);
-        const twoMinutesAgo = Date.now() - (2 * 60 * 1000);
-
-        for (const item of response.results) {
-            const outboxEvent = item.data;
-            const createdAt = new Date(outboxEvent.created_at).getTime();
-
-            // If the event was not dispatched and has been stuck for more than 2 minutes — re-dispatch
-            if (createdAt < twoMinutesAgo) {
-                logMessage('WARN', outboxEvent.payload.correlation_id, `Sweeper re-dispatched stuck event ${outboxEvent.event_id}`);
-                await dispatchOutboxEvent(outboxEvent, outboxEvent.payload.correlation_id);
-            }
-        }
-    } catch (error) {
-        logMessage('ERROR', '0', `Outbox Sweeper error: ${error.message}`);
-    }
-}
 
 if (process.env.NODE_ENV !== 'test') {
     app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Ingestion Service successfully started on port ${PORT}`);
     });
-    runOutboxSweeper();
 }
