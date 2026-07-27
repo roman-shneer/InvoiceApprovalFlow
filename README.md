@@ -25,7 +25,8 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 │   │   ├── 0006-management-ui.md    # Backoffice System Topology (Node.js + Vue 3)
 │   │   ├── 0007-dapr-adoption.md    # Sidecar Orchestration & Distributed System Abstraction
 │   │   ├── 0008-payment-saga.md     # Financial Settlement & Competing Saga Transactions
-│   │   └── 0009-opentelemetry.md    # Distributed Tracing Pipeline Integration (OTel + Zipkin)
+│   │   ├── 0009-opentelemetry.md    # Distributed Tracing Pipeline Integration (OTel + Zipkin)
+|   |   └── 0010-orchestrator.md     # Orchestrator Service Architecture & State-Driven Invoice Lifecycle
 │   └── ARCHITECTURE.md              # System Boundary & Sequence Diagrams
 └── README.md                        # This Document
 ```
