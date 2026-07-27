@@ -113,6 +113,59 @@ services:
         condition: service_started
     networks:
       - approval-flow-net
+  ### dapr scheduler service ###
+  dapr-scheduler:
+    image: "ghcr.io/dapr/scheduler:1.15.4"
+    command: [ "./scheduler", "--port", "50006", "--etcd-data-dir", "/tmp/dapr-scheduler-data" ]
+    ports:
+      - "50006:50006"
+    networks:
+      - approval-flow-net
+  ### Orchestrator Service ###
+  orchestrator-service:
+    build:
+      context: ./services/orchestrator/.
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+      - "3506:3500"
+      - "50003:50001"
+    container_name: orchestrator-service
+    hostname: orchestrator-service
+    environment:
+      - APP_PORT=8003
+      - DAPR_HTTP_HOST=127.0.0.1
+      - DAPR_HTTP_PORT=3500
+      - MONGO_DB=${MONGO_DB}
+    volumes:
+      - ./services/orchestrator:/app
+      - /app/node_modules
+    depends_on:
+      redis:
+        condition: service_started
+      mongodb-db:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - approval-flow-net
+
+  orchestrator-dapr-sidecar:
+    image: "ghcr.io/dapr/daprd:1.15.4"
+    container_name: orchestrator-dapr-sidecar
+    command: [ "/daprd", "--app-id", "orchestrator-service", "--app-port", "8003", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components", "--config", "/dapr/config.yaml", "--scheduler-host-address", "dapr-scheduler:50006" ]
+    volumes:
+      - ./dapr/components:/dapr/components
+      - ./dapr:/dapr
+    depends_on:
+      mongodb-db:
+        condition: service_healthy
+      orchestrator-service:
+        condition: service_started
+      dapr-placement:
+        condition: service_started
+      dapr-scheduler:
+        condition: service_started
+    network_mode: "service:orchestrator-service"
 
   ### Governance & AI Service ###
   governance-service:
@@ -150,7 +203,7 @@ services:
   governance-dapr-sidecar:
     image: "ghcr.io/dapr/daprd:1.15.4"
     container_name: governance-dapr-sidecar
-    command: [ "/daprd", "--app-id", "governance-service", "--app-port", "8002", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components", "--config", "/dapr/config.yaml" ]
+    command: [ "/daprd", "--app-id", "governance-service", "--app-port", "8002", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components", "--config", "/dapr/config.yaml", "--scheduler-host-address", "dapr-scheduler:50006" ]
     volumes:
       - ./dapr/components:/dapr/components
       - ./dapr:/dapr
@@ -160,6 +213,8 @@ services:
       governance-service:
         condition: service_started
       dapr-placement:
+        condition: service_started
+      dapr-scheduler:
         condition: service_started
     network_mode: "service:governance-service"
 
@@ -181,7 +236,7 @@ services:
     depends_on:
       - ollama-service
     restart: "no"
-    entrypoint: [ "sh", "-c", "until curl -s http://ollama-service:11434/api/tags > /dev/null; do echo 'Waiting for Ollama...'; sleep 5; done; echo 'Ollama is up! Pulling target model...'; curl -X POST http://ollama-service:11434/api/pull -d \"{\\\"name\\\": \\\"${AI_MODEL_NAME}\\\"}\"" ]
+    entrypoint: [ "sh", "-c", "until curl -s http://ollama-service:11434/api/tags > /dev/null; do echo 'Waiting for Ollama...'; sleep 5; done; echo 'Ollama is up! Pulling target model...'; curl -X POST http://ollama-service:11434/api/pull -d \"{\\\"name\\\": \\\"${AI_MODEL_NAME}\\\"}\"; echo 'Pulling embedding model...'; curl -X POST http://ollama-service:11434/api/pull -d \"{\\\"name\\\": \\\"${AI_EMBEDDING_MODEL_NAME}\\\"}\"" ]
 
   ### Management UI Service ###
   management-service:

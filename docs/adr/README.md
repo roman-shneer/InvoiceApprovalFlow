@@ -15,6 +15,7 @@ This index documents the historical context, concrete decisions, and architectur
 | **[ADR 0007](0007-dapr-adoption.md)** | Adoption of Dapr for Microservice Orchestration | `Accepted` | System Mesh / Sidecar |
 | **[ADR 0008](0008-payment-saga.md)** | Mock Payment Service Architecture & Saga Flow | `Accepted` | Payment Simulation |
 | **[ADR 0009](0009-opentelemetry.md)** | Distributed Tracing Implementation via OpenTelemetry and Zipkin | `Accepted` | Observability Pipeline |
+| **[ADR 0010](0010-orchestrator.md)** | Orchestrator Service Architecture & State-Driven Invoice Lifecycle | `Accepted` | Workflow Orchestration |
 
 ## 📐 Template Standard
 Every ADR added to this directory must strictly comply with the Michael Nygard pattern specification:
