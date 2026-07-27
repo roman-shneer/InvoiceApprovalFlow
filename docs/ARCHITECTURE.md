@@ -23,8 +23,16 @@ The system uses containerized microservices communicating via the **Dapr (Distri
 graph TD
     Client[Postman / Vue 3 UI] -->|HTTP Requests| Envoy[Envoy API Gateway: Port 8000]
     Envoy -->|Ingest Stream| Ingestion[Ingestion Service Node.js: Port 8001]
-    
-    subgraph Dapr Architectural Layer
+
+    subgraph Microservices Layer
+        Ingestion
+        Orchestrator[Orchestrator Service Node.js]
+        Governance[Governance Service Node.js]
+        Payment[Payment Service]
+        Management[Management Service Node.js / Vue 3]
+    end
+
+    subgraph Dapr Sidecar Layer
         Ingestion <-->|Sidecar IPC| Dapr1((Ingestion Dapr Sidecar))
         Orchestrator <-->|Sidecar IPC| Dapr5((Orchestrator Dapr Sidecar))
         Governance <-->|Sidecar IPC| Dapr2((Governance Dapr Sidecar))
@@ -34,25 +42,29 @@ graph TD
 
     subgraph Infrastructure Components
         Dapr1 -.->|Idempotency Keys| Redis[(Redis Server: Port 6379)]
+        
+        %% Database Connections
         Dapr1 -.->|Write PENDING State| DB[(MongoDB Replica Set: Port 27017)]
-        
-        Dapr5 -.->|Poll & Update State| DB
-        Dapr5 -.->|PubSub: invoice.pending| Dapr2
-        Dapr5 -.->|PubSub: payment.requested| Dapr3
-        
-        Dapr2 -.->|State: mongo-invoices| DB
-        Dapr3 -.->|State: mongo-invoices| DB
+        Dapr5 -.->|Poll & Mutate State| DB
+        Dapr2 -.->|Update Audit State| DB
+        Dapr3 -.->|Update Ledger State| DB
+
+        %% Dapr Pub/Sub Broker abstraction
+        Dapr5 -.->|Publish: invoice.pending| PubSub{Dapr Pub/Sub Broker}
+        Dapr5 -.->|Publish: payment.requested| PubSub
+        PubSub -.->|Deliver Event| Dapr2
+        PubSub -.->|Deliver Event| Dapr3
     end
 
     subgraph Local Secure AI Boundary
-        Dapr2 -->|Local HTTP Inference| Ollama[Ollama Service: Llama 3]
+        Governance -->|Local HTTP Inference| Ollama[Ollama Service: Llama 3]
     end
 
     subgraph Observability Pipeline
-        Dapr1 -.->|OTel Spans Export| Zipkin[Zipkin Dashboard: Port 9411]
-        Dapr5 -.->|OTel Spans Export| Zipkin
-        Dapr2 -.->|OTel Spans Export| Zipkin
-        Dapr3 -.->|OTel Spans Export| Zipkin
+        Dapr1 -.->|OTel Spans| Zipkin[Zipkin Dashboard: Port 9411]
+        Dapr2 -.->|OTel Spans| Zipkin
+        Dapr3 -.->|OTel Spans| Zipkin
+        Dapr5 -.->|OTel Spans| Zipkin
     end
 ```
 
