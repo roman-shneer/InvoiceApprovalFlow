@@ -1,5 +1,5 @@
 const { DaprServer, DaprClient } = require('@dapr/dapr');
-const appPort = process.env.APP_PORT || "8003";
+const appPort = process.env.APP_PORT || process.env.PORT || "8003";
 const daprHost = process.env.DAPR_HOST || "127.0.0.1";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
 const daprClient = new DaprClient({
@@ -13,10 +13,14 @@ const server = new DaprServer({
     serverPort: appPort,
     client: daprClient
 });
+
+
+
+
 const PUB_SUB_NAME = "approval-pubsub";
 const PUB_SUB_TOPIC_PENDING = 'invoice.pending';
 const PUB_SUB_TOPIC_PAYMENT = 'payment.requested';
-
+const JOB_NAME = "mongo-event-cron";
 async function scheduleJob(jobName, data = {}, schedule = null, dueTime = null) {
     const payload = {
         data,
@@ -36,6 +40,8 @@ async function scheduleJob(jobName, data = {}, schedule = null, dueTime = null) 
     if (!res.ok) {
         const errorText = await res.text();
         throw new Error(`Failed to schedule job ${jobName}: ${errorText}`);
+    } else {
+        console.log(`scheduleJob ok http://${daprHost}:${daprPort}/v1.0-alpha1/jobs/${jobName}`);
     }
 }
 
@@ -76,9 +82,10 @@ async function saveInvoice(key, invoice, status) {
 
 
 async function start() {
+    console.log(`Starting orchestrator service on port ${appPort}...`);
 
     await server.invoker.listen(
-        "job/mongo-event-cron", // Route URL
+        `job/${JOB_NAME}`, // Route URL
         async (req, res) => {
             const thirtyMinAgoMs = Date.now() - (5 * 60 * 1000);
 
@@ -110,6 +117,7 @@ async function start() {
 
                 const rawResults = response?.results || [];
                 if (rawResults.length === 0) {
+                    console.log("[Job Cron] No pending invoices found");
                     return { done: true, message: "No pending invoices found" };
                 }
 
@@ -121,14 +129,14 @@ async function start() {
                 switch (invoice.status) {
                     case 'PENDING':
                     case 'PROCESSING':
-                        await daprClient.pubsub.publish(PUB_SUB_NAME, PUB_SUB_TOPIC_PENDING, invoice);
                         await saveInvoice(key, invoice, 'PROCESSING');
+                        await daprClient.pubsub.publish(PUB_SUB_NAME, PUB_SUB_TOPIC_PENDING, invoice);
                         break;
                     case 'AUTO_APPROVE':
                     case 'APPROVED':
                     case 'PROCESSING_PAYMENT':
-                        await daprClient.pubsub.publish(PUB_SUB_NAME, PUB_SUB_TOPIC_PAYMENT, invoice);
                         await saveInvoice(key, invoice, 'PROCESSING_PAYMENT');
+                        await daprClient.pubsub.publish(PUB_SUB_NAME, PUB_SUB_TOPIC_PAYMENT, invoice);
                         break;
 
                 }
@@ -147,8 +155,8 @@ async function start() {
 
     try {
         // register job to run every 10 seconds (or as defined in env)
-        await scheduleJob("mongo-event-cron", {}, `@every ${process.env.AI_REQUEST_DELAY || 10}s`);
-        console.log("Successfully registered recurring job 'mongo-event-cron'");
+        await scheduleJob(JOB_NAME, {}, `@every ${process.env.AI_REQUEST_DELAY || 10}s`);
+        console.log(`Successfully registered recurring job '${JOB_NAME}'`);
     } catch (err) {
         console.error("Failed to register recurring job:", err.message);
     }
