@@ -19,22 +19,16 @@ function anonymizeInvoice(invoice, rate) {
     if (cleanInvoice.id) cleanInvoice.id = maskId(cleanInvoice.id);
     if (cleanInvoice.invoiceNumber) cleanInvoice.invoiceNumber = maskId(cleanInvoice.invoiceNumber);
     const excessFields = [
-        'id',
         'notes',
         'note',
         'audit_metadata',
         'scenario',
         'expected',
         'status',
-        'invoiceNumber',
-        'submitter',
-        'department',
         'idempotency_key',
         'submitted_at',
         'correlation_id',
-        'tracking_id',
-        'createdAt',
-        'date'];
+        'createdAt'];
     excessFields.forEach(field => {
         if (typeof cleanInvoice[field] !== 'undefined') {
             delete cleanInvoice[field];
@@ -46,10 +40,11 @@ function anonymizeInvoice(invoice, rate) {
     if (cleanInvoice.discrepancy === 0) {
         delete cleanInvoice.discrepancy;
     }
+    /*
     if (cleanInvoice.taxAmount === 0) {
         delete cleanInvoice.taxAmount;
     }
-
+    */
     if (invoice.currency != 'USD') {
         cleanInvoice.amountInUSD = cleanInvoice.total * rate;
     }

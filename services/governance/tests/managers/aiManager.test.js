@@ -4,18 +4,27 @@ process.env.NODE_ENV = 'test';
 process.env.DAPR_HTTP_HOST = "127.0.0.1";
 process.env.DAPR_HTTP_PORT = "3505";
 process.env.OLLAMA_API_URL = "http://127.0.0.1:11434";
-//process.env.AI_MODEL_NAME = "qwen2.5:3b-instruct-q4_K_M";
-process.env.AI_MODEL_NAME = "qwen2.5:7b-instruct-q3_K_M";
+//process.env.AI_MODEL_NAME = "phi3:3.8b";
+process.env.AI_MODEL_NAME = "qwen2.5:7b-instruct-q5_K_M";
 const { aiManager, anonymizeInvoice } = require('../../managers/aiManager');
-const { getPolicies } = require('../../resources/db');
+const { getPolicies, getFxRate } = require('../../resources/db');
 const { RagEngine } = require('../../resources/ragEngine');
 const ragEngine = new RagEngine();
+async function resolveFxRate(invoice) {
+    if (invoice.currency !== 'USD') {
+        const rateEntry = await getFxRate(invoice.currency, invoice.date);
+        if (rateEntry && rateEntry.rate) {
+            return rateEntry.rate;
+        }
+    }
 
+    return 1;
+}
 async function checkInvoice(invoice) {
 
     const activeRules = await getPolicies();
 
-    const rate = 1;
+    const rate = await resolveFxRate(invoice);
     const anonymizedInvoice = anonymizeInvoice(invoice, rate);
 
     const dynamicPolicyContext = await ragEngine.retrieveRelevantPolicies(invoice, activeRules);
@@ -28,38 +37,37 @@ describe('aiManager Handler', () => {
     test('testing aiResponses via RAG', async () => {
 
         const invoice = {
-            "id": "INV-1015",
-            "submitter": "dana.cohen@northwind.example",
+            "id": "INV-1005",
+            "submitter": "omar.farouk@northwind.example",
             "department": "sales-2026Q2",
-            "vendor": "Bistro 19",
+            "vendor": "Trattoria Verde",
             "vendorKnown": true,
-            "invoiceNumber": "NW-INV-7820",
+            "invoiceNumber": "NW-INV-7801",
             "currency": "USD",
             "category": "meals",
-            "attendees": 2,
+            "attendees": 4,
             "lineItems": [
                 {
-                    "description": "Alcohol-only bar tab",
-                    "quantity": 1,
-                    "unitPrice": 60.0
+                    "description": "Team dinner",
+                    "quantity": 4,
+                    "unitPrice": 30.0
                 }
             ],
             "taxAmount": 0.0,
-            "total": 60.0,
-            "receiptPresent": true,
-            "date": "2026-05-18",
-            "notes": "Alcohol-only receipt; use this to exercise the reject route.",
-            "scenario": "reject:not-reimbursable",
+            "total": 120.0,
+            "receiptPresent": false,
+            "date": "2026-05-14",
+            "notes": "Receipt not attached.",
             "expected": {
-                "route": "reject",
+                "route": "human_review",
                 "violations": [
-                    "MEAL-03"
+                    "GLOBAL-RECEIPT"
                 ],
-                "reason": "Alcohol-only receipts are not reimbursable. Reject regardless of amount."
+                "reason": "Missing required receipt (> $25). Missing info -> escalate; never auto-approve."
             }
         };
 
         const aiResponse = await checkInvoice(invoice);
-        expect(aiResponse.recommendation.toLowerCase()).toBe('human_review');
-    }, 120000);
+        expect(aiResponse.route.toLowerCase()).toBe(invoice.expected.route.toLowerCase());
+    }, 200000);
 });
