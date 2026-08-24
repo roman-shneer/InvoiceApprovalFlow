@@ -103,7 +103,7 @@ class InvoicesRepository {
         ]);
         //inform payment
         if (status == 'APPROVED') {
-            await this.daprClient.pubsub.publish(PUB_SUB_NAME, 'payment.requested', invoice);
+            await this.daprClient.pubsub.publish(PUB_SUB_NAME, 'invoice.payment', invoice);
         }
         return invoice;
 

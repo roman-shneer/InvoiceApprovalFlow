@@ -130,6 +130,11 @@ async function start() {
             },
             {
                 pubsubname: 'approval-pubsub',
+                topic: 'invoice.review',
+                route: '/events/invoice-processed'
+            },
+            {
+                pubsubname: 'approval-pubsub',
                 topic: 'payment.confirmed',
                 route: '/events/payment-confirmed'
             },

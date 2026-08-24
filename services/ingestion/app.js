@@ -13,7 +13,7 @@ const PUB_SUB_NAME = 'approval-pubsub';
 //const PUB_SUB_TOPIC = 'invoice.submitted';
 const MONGO_STATE_STORE = 'mongo-state';
 const MONGO_INVOICES_STORE = 'mongo-invoices';
-const NOTIFICATION_PROCESSED_TOPIC = "invoice.processed";
+const NOTIFICATION_PENDING_TOPIC = "invoice.pending";
 
 const daprClient = new DaprClient({ daprHost: DAPR_HOST, daprPort: DAPR_PORT });
 const app = express();
@@ -80,7 +80,7 @@ async function saveInvoiceToMongo(invoice) {
         console.log(`[${invoice.tracking_id}] ERROR: ${invoice.correlation_id}: Failed to save audit record in MongoDB: ${dbErr.message}`);
     }
 }
-async function publishInvoiceNotification(pendingInvoice, topic = NOTIFICATION_PROCESSED_TOPIC) {
+async function publishInvoiceNotification(pendingInvoice, topic = NOTIFICATION_PENDING_TOPIC) {
     if (!pendingInvoice) return;
     try {
         await daprClient.pubsub.publish(PUB_SUB_NAME, topic, pendingInvoice);
@@ -116,7 +116,7 @@ app.post('/api/v1/expenses', async (req, res) => {
         logMessage('WARN', correlationId, 'Token has expired.');
         return res.status(403).json({ error: 'Forbidden: Token has expired.' });
     }
-
+    logMessage('INFO', correlationId, 'Token is valid.');
     const body = req.body;
 
     if (!body || !body.id) {
@@ -178,7 +178,8 @@ app.post('/api/v1/expenses', async (req, res) => {
             //TODO: Implement retry mechanism for failed Mongo saves. For now, log the error and continue processing.
             console.error(`[${eventPayload.tracking_id}] Failed asynchronous background Mongo save:`, dbErr.message);
         });
-        await publishInvoiceNotification(eventPayload, NOTIFICATION_PROCESSED_TOPIC);
+        logMessage('INFO', correlationId, `Publish notification to ${PUB_SUB_NAME} ${NOTIFICATION_PENDING_TOPIC}.`);
+        await publishInvoiceNotification(eventPayload, NOTIFICATION_PENDING_TOPIC);
         //require for duplication detection - save to state store with TTL
         await daprClient.state.save(STATE_STORE_NAME, [
             {
@@ -186,9 +187,13 @@ app.post('/api/v1/expenses', async (req, res) => {
                 value: {
                     tracking_id: trackingId,
                     correlation_id: correlationId,
-                    status: 'PROCESSING'
+                    status: 'PROCESSING',
+                    payload: eventPayload, // ВАЖНО - весь инвойс
+                    lockedBy: process.env.HOSTNAME,
+                    lockedAt: new Date().toISOString(),
+                    createdAt: new Date().toISOString()
                 },
-                metadata: { ttlInSeconds: '86400' }
+                //metadata: { ttlInSeconds: '86400' }
             }
         ]);
 
