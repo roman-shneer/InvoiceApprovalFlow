@@ -25,8 +25,7 @@ graph TD
     Envoy -->|Ingest Stream| Ingestion[Ingestion Service Node.js: Port 8001]
 
     subgraph Microservices Layer
-        Ingestion
-        Orchestrator[Orchestrator Service Node.js]
+        Ingestion        
         Governance[Governance Service Node.js]
         Payment[Payment Service]
         Management[Management Service Node.js / Vue 3]
@@ -34,7 +33,6 @@ graph TD
 
     subgraph Dapr Sidecar Layer
         Ingestion <-->|Sidecar IPC| Dapr1((Ingestion Dapr Sidecar))
-        Orchestrator <-->|Sidecar IPC| Dapr5((Orchestrator Dapr Sidecar))
         Governance <-->|Sidecar IPC| Dapr2((Governance Dapr Sidecar))
         Payment <-->|Sidecar IPC| Dapr3((Payment Dapr Sidecar))
         Management <-->|Sidecar IPC| Dapr4((Management Dapr Sidecar))
@@ -51,7 +49,7 @@ graph TD
 
         %% Dapr Pub/Sub Broker abstraction
         Dapr5 -.->|Publish: invoice.pending| PubSub{Dapr Pub/Sub Broker}
-        Dapr5 -.->|Publish: payment.requested| PubSub
+        Dapr5 -.->|Publish: invoice.payment| PubSub
         PubSub -.->|Deliver Event| Dapr2
         PubSub -.->|Deliver Event| Dapr3
     end
@@ -70,9 +68,8 @@ graph TD
 
 ### Microservice Directory
 1.  **Ingestion Service (Node.js Express):** Exposes a high-performance input boundary. It validates JSON schemas, processes incoming headers for MD5-hashed idempotency keys in Redis to short-circuit duplicates, and writes new invoices directly with status PENDING into mongo-invoices.
-2.  **Orchestrator Service (Node.js)** Centralized state-driven polling orchestrator (0010-orchestrator.md). Uses Dapr Scheduler (mongo-event-cron) to poll mongo-invoices item-by-item, locks records in PROCESSING state, and dispatches tasks to governance-service (invoice.pending) or payment-service (payment.requested).
 2.  **Governance & AI Engine Agent (Node.js):** Listens to invoice.pending events. Evaluates deterministic hard stop constraints (currency checks, receipt requirements) and coordinates local asynchronous LLM inference cycles via Ollama. Updates evaluation results (AUTO_APPROVE, APPROVED, REJECTED) back into mongo-invoices.
-3.  **Payment Service:** Controls corporate asset movement. Listens to payment.requested events, tracks budget allocations, simulates edge-case connectivity status triggers with mock banking endpoints, and publishes terminal events (payment.confirmed / payment.failed).
+3.  **Payment Service:** Controls corporate asset movement. Listens to invoice.payment events, tracks budget allocations, simulates edge-case connectivity status triggers with mock banking endpoints, and publishes terminal events (payment.confirmed / payment.failed).
 4.  **Management Service (Node.js + Vue 3):** Administrative backoffice backplane used to re-configure runtime autonomy ceiling properties dynamically inside MongoDB.
 
 ---
@@ -89,7 +86,6 @@ sequenceDiagram
     participant Envoy as Envoy Gateway
     participant IS as Ingestion Service
     participant DB as MongoDB State Store
-    participant OS as Orchestrator Service
     participant GS as Governance Engine
     participant PS as Payment Service
     participant ZK as Zipkin OTel
@@ -104,14 +100,13 @@ sequenceDiagram
     Note over OS: Dapr Cron Job Triggers (mongo-event-cron)<br/>Queries mongo-invoices (limit: 1)
     OS->>DB: Mutate status to PROCESSING
     OS->>GS: Dapr Pub/Sub: invoice.pending
-    OS->>ZK: Export Orchestrator Span
 
     Note over GS: Evaluates applyOverride() -> Auto-Approve
     GS->>DB: Persist Audited Status: AUTO_APPROVE
 
     Note over OS: Next Cron Cycle reads AUTO_APPROVE
     OS->>DB: Mutate status to PROCESSING_PAYMENT
-    OS->>PS: Dapr Pub/Sub: payment.requested
+    OS->>PS: Dapr Pub/Sub: invoice.payment
 
     Note over PS: Processes budget reserve<br/>Calls mock banking node -> Success
     PS->>DB: Persist Ledger Status: PAID
@@ -127,8 +122,7 @@ sequenceDiagram
     autonumber
     actor Client as Client / Postman
     participant IS as Ingestion Service
-    participant DB as MongoDB State Store
-    participant OS as Orchestrator Service
+    participant DB as MongoDB State Store    
     participant GS as Governance Engine
 
     Client->>IS: POST /api/v1/expenses (Amount: \$1250.00)
@@ -151,8 +145,7 @@ sequenceDiagram
 To guarantee structural ledger alignment without locking underlying distributed databases, the platform relies on an Orchestrated Saga Pattern utilizing event-driven microservices (0008-payment-saga.md).
 
 ```mermaid
-graph TD
-    Trigger([Orchestrator Dispatches payment.requested]) --> Step1[Payment Service: Allocate Corporate Balance Reserve]
+graph TD    
     Step1 -->|Success| Step2[Payment Service: Post Entry via Mock Bank Endpoint]
     Step2 -->|HTTP 200: Transaction Ok| Commit[Complete Saga: Update State to PAID & Publish payment.confirmed]
     
@@ -166,7 +159,6 @@ graph TD
 1.  **Initial Reserve:** `Payment Service` locks internal funds matching the invoice value to prevent over-allocation.
 2.  **External Link Failure:** The simulated banking node throws a network connection timeout or a simulated rejection (`bank_node_available: false`).
 3.  **Trigger Compensation:** The service catches the exception, updates the transaction state model to `REJECTED_ROLLBACK`, releases the locked budget reserve, and publishes `payment.failed`.
-4.  **Final Sync:** `Orchestrator Service` and `Management Service` catch the failure event to notify audit logs and administration backoffice panels.
 
 ---
 
