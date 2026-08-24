@@ -68,6 +68,6 @@ describe('aiManager Handler', () => {
         };
 
         const aiResponse = await checkInvoice(invoice);
-        expect(aiResponse.route.toLowerCase()).toBe(invoice.expected.route.toLowerCase());
+        expect(aiResponse.recommendation.toLowerCase()).toBe(invoice.expected.route.toLowerCase());
     }, 200000);
 });

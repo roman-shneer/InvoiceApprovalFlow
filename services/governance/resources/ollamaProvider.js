@@ -1,11 +1,8 @@
 const { Ollama } = require('ollama');
-const AbstractProvider = require('./abstractProvider');
-const nlp = require('compromise');
-class ollamaProvider extends AbstractProvider {
+class ollamaProvider {
     aiEngine = null;
     modelName = process.env.AI_MODEL_NAME || 'llama3';
     constructor() {
-        super();
         const API_URL = process.env.OLLAMA_API_URL || 'http://127.0.0.1:11434';
         this.aiEngine = new Ollama({ host: API_URL });;
     }
@@ -191,7 +188,7 @@ Confidence: 1.0 if all inputs present, 0.5 if any input missing.`;
         }
 
         const result = {
-            route: recommendation,
+            recommendation: recommendation,
             reason: response2.reasoning || reason,
             confidence: confidence,
             triggered_rules: violatedRules,

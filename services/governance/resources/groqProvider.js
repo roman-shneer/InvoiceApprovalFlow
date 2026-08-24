@@ -1,10 +1,9 @@
 const Groq = require("groq-sdk");
-const AbstractProvider = require('./abstractProvider');
-class groqProvider extends AbstractProvider {
+
+class groqProvider {
     aiEngine = null;
-    modelName = "openai/gpt-oss-120b"
+    modelName = "openai/gpt-oss-120b";
     constructor() {
-        super();
         this.aiEngine = new Groq({
             apiKey: process.env.GROQ_API_KEY
         });;
@@ -94,6 +93,10 @@ The object structure must be exactly:
 {"rules": [], "reason": "", "confidence": 1.0, "recommendation": ""}
 `;
         return systemPrompt;
+    }
+
+    generateUserPrompt(invoice) {
+        return `Analyze this invoice payload: ` + JSON.stringify(invoice)
     }
 }
 

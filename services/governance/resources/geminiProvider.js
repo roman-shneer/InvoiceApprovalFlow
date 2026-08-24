@@ -1,12 +1,10 @@
 const { GoogleGenAI, Type } = require('@google/genai');
-const AbstractProvider = require('./abstractProvider');
 
 
-class geminiProvider extends AbstractProvider {
+class geminiProvider {
     aiEngine = null;
     modelName = "gemini-3.6-flash";
     constructor() {
-        super();
         this.aiEngine = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });;
     }
     async requestModel(trackingId, anonymizedInvoice, policyComplects) {
@@ -110,6 +108,10 @@ You MUST respond strictly in a valid JSON object format. Follow this exact seque
 `;
         return systemPrompt;
 
+    }
+
+    generateUserPrompt(invoice) {
+        return `Analyze this invoice payload: ` + JSON.stringify(invoice)
     }
 }
 
