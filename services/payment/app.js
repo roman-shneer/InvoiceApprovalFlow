@@ -298,7 +298,7 @@ async function processInvoicePayment(invoice) {
 }
 
 async function start() {
-    await server.pubsub.subscribe(PUB_SUB, 'payment.requested', async (eventData) => {
+    await server.pubsub.subscribe(PUB_SUB, 'invoice.payment', async (eventData) => {
         return await processInvoicePayment(eventData.data || eventData);
     });
 
