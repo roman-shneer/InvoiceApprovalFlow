@@ -1,6 +1,5 @@
-const { checkHardStops } = require('../services/governance/engines/checkHardStops');
-const { applyAutonomyOverride } = require('../services/governance/engines/applyAutonomyOverride');
-
+const { applyOverride } = require('../services/governance/engines/applyOverride');
+const defaultAiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.95 };
 describe('Distributed Multi-Service Real E2E Journey Harness', () => {
     const mockTraceId = "4bf92f3577b34da6a3ce929d0e0e4736";
     const mockSpanId = "00f067aa0ba902b7";
@@ -20,11 +19,8 @@ describe('Distributed Multi-Service Real E2E Journey Harness', () => {
 
         expect(incomingInvoice.traceparent).toBe(w3cTraceParent);
 
-        const hardStopResult = checkHardStops(incomingInvoice, []);
-        expect(hardStopResult.recommendation).toBe('AUTO_APPROVE');
-
         const aiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.95 };
-        const finalRouting = applyAutonomyOverride(aiResult, incomingInvoice, []);
+        const finalRouting = applyOverride(aiResult, incomingInvoice, []);
         expect(finalRouting.recommendation).toBe('AUTO_APPROVE');
 
         const paymentEventPayload = {
@@ -50,7 +46,7 @@ describe('Distributed Multi-Service Real E2E Journey Harness', () => {
             vendorKnown: true
         };
 
-        const hardStopResult = checkHardStops(incomingInvoice, []);
+        const hardStopResult = applyOverride(defaultAiResult, incomingInvoice, []);
         expect(hardStopResult.recommendation).toBe('HUMAN_REVIEW');
         expect(hardStopResult.triggered_rules).toContain('GLOBAL-RECEIPT');
     });
@@ -66,11 +62,8 @@ describe('Distributed Multi-Service Real E2E Journey Harness', () => {
             vendorKnown: true
         };
 
-        const hardStopResult = checkHardStops(incomingInvoice, []);
-        expect(hardStopResult.recommendation).toBe('AUTO_APPROVE');
 
-        const aiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.98 };
-        const finalRouting = applyAutonomyOverride(aiResult, incomingInvoice, []);
+        const finalRouting = applyOverride(defaultAiResult, incomingInvoice, []);
         expect(finalRouting.recommendation).toBe('HUMAN_REVIEW');
         expect(finalRouting.triggered_rules).toContain('AUTONOMY-CEILING');
     });
@@ -86,7 +79,7 @@ describe('Distributed Multi-Service Real E2E Journey Harness', () => {
             vendorKnown: true
         };
 
-        const hardStopResult = checkHardStops(incomingInvoice, []);
+        const hardStopResult = applyOverride(defaultAiResult, incomingInvoice, []);
         expect(hardStopResult.recommendation).toBe('HUMAN_REVIEW');
         expect(hardStopResult.triggered_rules).toContain('GLOBAL-FX');
 

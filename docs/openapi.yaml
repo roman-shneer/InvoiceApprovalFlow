@@ -15,6 +15,13 @@ paths:
           schema:
             type: string
             example: corr_8520a20a-b370-dce4-89cb-7d0bc1fa78d6
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            example: 7f9b2d8e4c1a5f6e3b2a1c9d8e7f6a5b
+          description: Unique MD5 hash or GUID for request de-duplication via Redis.
       requestBody:
         required: true
         content:
@@ -48,7 +55,7 @@ paths:
                   example: true
       responses:
         '202':
-          description: Invoice request accepted successfully and queued for processing pipeline.
+          description: Invoice request accepted successfully and stored with PENDING status for orchestrator pickup.
           content:
             application/json:
               schema:
@@ -59,7 +66,7 @@ paths:
                     example: INV-1001
                   status:
                     type: string
-                    example: ACCEPTED
+                    example: PENDING
                   message:
                     type: string
                     example: Invoice submitted successfully and queued for processing.

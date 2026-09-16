@@ -1,55 +1,90 @@
-const fs = require('fs/promises');
-const path = require('path');
 const { OllamaEmbeddings } = require('@langchain/ollama');
 const { MemoryVectorStore } = require('langchain/vectorstores/memory');
 const { Document } = require('@langchain/core/documents');
+const { getPolicies } = require('./db');
 
-const daprHost = process.env.DAPR_HOST || "127.0.0.1";
+const daprHost = process.env.DAPR_HTTP_HOST || "governance-dapr-sidecar";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
 
-const embeddings = new OllamaEmbeddings({
-    model: "nomic-embed-text",
-    baseUrl: `http://${daprHost}:${daprPort}/v1.0/invoke/ollama-service/method`
-});
+class RagEngine {
+    policies = [];
+    embedModel = process.env.AI_EMBEDDING_MODEL_NAME || "nomic-embed-text";
+    embeddings = null;
+    vectorStore = null;
+    constructor() {
 
-let vectorStore = null;
+        this.policies = [];
+        this.embeddings = new OllamaEmbeddings({
+            model: this.embedModel,
+            baseUrl: process.env.OLLAMA_API_URL
+        });
 
-async function initRagEngine() {
-    try {
-        console.log("🤖 [RAG Engine] Initializing pure JS memory vector store over policy...");
-        const filePath = path.join(__dirname, '..', 'docs', 'company_expense_policy.txt');
-        const text = await fs.readFile(filePath, 'utf8');
+    }
 
-        const chunks = text.split('\n\n').map(c => c.trim()).filter(Boolean);
-
-        const docs = chunks.map((chunk, index) => new Document({
-            pageContent: chunk,
-            metadata: { id: index }
-        }));
+    ruleToText(rule) {
+        return `Rule ID: ${rule.rule_id}` + "\n"
+            + `Description: ${rule.rule_text}`;
+    }
 
 
-        vectorStore = await MemoryVectorStore.fromDocuments(docs, embeddings);
+    comparePolicies(policies) {
+        return JSON.stringify(this.policies) === JSON.stringify(policies);
+    }
 
-        console.log(`✅ [RAG Engine] Successfully indexed ${chunks.length} segments with pure JS store.`);
-    } catch (err) {
-        console.error("❌ [RAG Engine] Initialization failed:", err.message);
+    async init(policies) {
+        try {
+            const rulesByCategory = [];
+            policies.forEach(rule => {
+                const categories = rule.category.replace(/\//g, "&").split('&');
+                categories.forEach(category => {
+                    category = category.trim().toLowerCase();
+                    rulesByCategory.push({
+                        rule_id: rule.rule_id,
+                        category: category,
+                        rule_text: rule.rule_text
+                    });
+                });
+            });
+            const docs = rulesByCategory.map(rule => {
+                return new Document({
+                    pageContent: this.ruleToText(rule),
+                    metadata: {
+                        id: rule.rule_id,
+                        category: rule.category,
+                    },
+                });
+            });
+
+            this.vectorStore = await MemoryVectorStore.fromDocuments(docs, this.embeddings);
+            console.log(`✅ [RAG Engine] Successfully indexed ${docs.length} segments with pure JS store.`);
+        } catch (err) {
+            console.error("❌ [RAG Engine] Initialization failed:", err.message);
+            if (err.cause) console.error("🔍 Error:", err.cause);
+        }
+    }
+
+    async retrieveRelevantPolicies(invoice, activeRules) {
+        if (this.policies.length === 0 || !this.comparePolicies(activeRules)) {
+            await this.init(activeRules);
+            this.policies = activeRules; // Update the policies after initialization
+        }
+
+        if (!this.vectorStore) return "";
+
+        try {
+            const searchQuery = `Compliance policies, spending thresholds, and limits`;
+            const targetCategory = invoice.category?.toLowerCase().trim();
+
+            const results = await this.vectorStore.similaritySearch(searchQuery, 10, (doc) => {
+                const category = doc.metadata.category?.toLowerCase().trim();
+                return ([targetCategory, 'global rules', 'autonomy'].includes(category));
+            });
+            return results.map(doc => doc.pageContent);
+        } catch (err) {
+            console.error("[RAG Engine] Failed to retrieve policies:", err.message);
+            return [];
+        }
     }
 }
 
-async function retrieveRelevantPolicies(invoice) {
-    if (!vectorStore) return "";
-
-    try {
-        const searchQuery = `Invoice check: category ${invoice.category}, vendor ${invoice.vendor}, total amount ${invoice.total}, notes: ${invoice.notes || ''}`;
-
-        const results = await vectorStore.similaritySearch(searchQuery, 2);
-
-        const matchedPolicies = results.map(doc => doc.pageContent).join('\n\n');
-        return matchedPolicies;
-    } catch (err) {
-        console.error("[RAG Engine] Failed to retrieve policies context:", err.message);
-        return "";
-    }
-}
-
-module.exports = { initRagEngine, retrieveRelevantPolicies };
+module.exports = { RagEngine };

@@ -1,3 +1,6 @@
+<script setup>
+import InvoicesConclusion from './InvoicesConclusion.vue';
+</script>
 <template>
     <div v-if="showInvoice!=null" class="show-invoice">
         <button class="show-invoice-close" @click="showInvoice=null">x</button>
@@ -8,30 +11,37 @@
             <tr>
                 <td>tracking_id</td>
                 <td>invoiceNumber</td>
-                <td>correlation_id</td>
-                <td>submitter</td>
-                <td>submitted</td>
+                
+                
+                <td>submitted</td>                                
                 <td>tax</td>
-                <td>total</td>
                 <td>expected</td>
                 <td>expected reason</td>
+                <td>ai status</td>
+                <td>ai reason</td>
                 <td>audit status</td>   
-                <td>audit reason</td>
+                <td>audit reason</td>                
                 <td v-if="role=='submitter'">payment</td>                
                 <td v-if="role=='approver'">&nbsp;</td>             
             </tr>
             <tr v-for="invoice of invoices" :key="invoice.key || invoice.tracking_id || invoice.id">
                 <td @click="openInvoice(invoice)" title="tracking id">{{ invoice.tracking_id }}</td>
-                <td @click="openInvoice(invoice)" title="invoice number">{{ invoice.invoiceNumber }}</td>
-                <td @click="openInvoice(invoice)" title="correlation id">{{invoice.correlation_id}}</td>
-                <td @click="openInvoice(invoice)" title="submitter">{{ invoice.submitter}}</td>
-                <td @click="openInvoice(invoice)" title="submitted">{{ renderDate(invoice.submitted_at)}}</td>
-                <td @click="openInvoice(invoice)" title="tax">{{renderCurrency(invoice.currency)}}{{invoice.taxAmount}}</td>
-                <td @click="openInvoice(invoice)" title="total">{{renderCurrency(invoice.currency)}}{{invoice.total}}</td>
-                <td @click="openInvoice(invoice)" title="expected route">{{ getExpectedRoute(invoice) }}</td>
-                <td @click="openInvoice(invoice)" title="expected reason">{{ getExpectedReason(invoice) }}</td>
-                <td @click="openInvoice(invoice)" title="audit status">{{ renderStatus(invoice) }}</td>
-                <td @click="openInvoice(invoice)" title="audit reason">{{ invoice.audit_metadata?.reason }}</td>
+                <td @click="openInvoice(invoice)" title="invoice number">{{ invoice.invoiceNumber }}</td>                                
+                <td @click="openInvoice(invoice)" title="submitted">{{ renderDate(invoice.submitted_at)}}</td>                
+                <td @click="openInvoice(invoice)" title="total">{{renderCurrency(invoice.currency)}}{{invoice.total}}</td>                
+                <td @click="openInvoice(invoice)" title="expected route">{{ renderStatus(invoice?.expected?.route??'') }}</td>
+                <td @click="openInvoice(invoice)" title="expected reason">
+                    {{ invoice?.expected?.reason??'' }}
+                    <br/>
+                    <font color="navy" style="font-size:90%;">{{ invoice?.expected?.violations ? invoice?.expected?.violations.join(', ') : '' }}</font>
+                </td>
+                <td @click="openInvoice(invoice)" :title="JSON.stringify(invoice?.audit_metadata?.aiResult)">{{ renderStatus(invoice?.audit_metadata?.aiResult?.recommendation ?? '') }}</td>
+                <td @click="openInvoice(invoice)" :title="JSON.stringify(invoice?.audit_metadata?.aiResult)">
+                    {{ invoice?.audit_metadata?.aiResult?.reason }}<br/>
+                    <font color="navy" style="font-size:90%;">{{ invoice?.audit_metadata?.aiResult?.triggered_rules ? invoice?.audit_metadata?.aiResult?.triggered_rules.join(', ') : '' }}</font>
+                </td>
+                <td @click="openInvoice(invoice)" title="audit status">{{ renderStatus(invoice.status??'') }}</td>
+                <td @click="openInvoice(invoice)" title="audit reason">{{ invoice?.audit_metadata?.reason }}</td>                
                 <td @click="openInvoice(invoice)" title="payment status" v-if="role=='submitter'" >{{ renderPaymentStatus(invoice) }}</td>                
                 <td v-if="role=='approver'">
                     <button @click="approveInvoice(invoice)">Approve</button>
@@ -40,6 +50,7 @@
             </tr>
         </tbody>
     </table>
+    <InvoicesConclusion :correctCount="correctCount" :processedCount="processedCount" :resultPercentage="resultPercentage" />
 </template>
 <script>
 
@@ -60,25 +71,45 @@ export default {
             invoice:"",
             invoices:[],
             showInvoice:null,
-            eventHandlers: {}
+            eventHandlers: {},           
+        }
+    },
+    computed: {        
+        processedCount() {
+            return this.invoices.filter(invoice => ['AUTO_APPROVE', 'HUMAN_REVIEW', 'DECLINE', 'REJECT'].includes(invoice.status)).length;
+        },
+        correctCount() {
+            return this.invoices.filter(invoice => {
+                const route = invoice.expected?.route?.toUpperCase();
+                const aiRec = invoice.audit_metadata?.aiResult?.recommendation?.toUpperCase();
+                return route && aiRec && route === aiRec;
+            }).length;
+        },
+        resultPercentage() {
+            if (this.processedCount === 0) return '(0.00%)';
+            const percentage = (this.correctCount * 100) / this.processedCount;
+            return `(${percentage.toFixed(2)}%)`;
         }
     },
     methods:{
-        renderStatus(invoice){
-            if(!invoice || !invoice.status){
+        renderStatus(status){                        
+            if(!status || typeof status !== 'string'){
                 return '';
             }
-            let status ="";
-            if(invoice.status=="HUMAN_REVIEW" || invoice.status=="DECLINE" || invoice.status=="REJECT"){
-                status="❌ "+invoice.status;
-            }else if(invoice.status=="AUTO_APPROVE" || invoice.status=="APPROVED"){
-                status="✅ "+invoice.status;
+            status=status?.toUpperCase() || '';
+            let displayStatus ="";
+            if(status=="HUMAN_REVIEW" || status=="DECLINE" || status=="REJECT"){
+                displayStatus="❌ "+status;
+            }else if(status=="AUTO_APPROVE" || status=="APPROVED"){
+                displayStatus="✅ "+status;
             }else{
-                status=invoice.status;
+                displayStatus=status;
             }
             
-            return status;
+            return displayStatus;
         },
+
+
         renderPaymentStatus(invoice){
             if(!invoice || !invoice.payment || !invoice.payment.status){
                 return '';
@@ -95,6 +126,8 @@ export default {
             
             return status;
         },       
+
+
         async approveInvoice(invoice){
             try {
                 const key = invoice.key || invoice.tracking_id || invoice.id;
@@ -108,6 +141,8 @@ export default {
                 alert('Approve failed: ' + err.message);
             }
         },
+
+
         async rejectInvoice(invoice){
             try {
                 const key = invoice.key || invoice.tracking_id || invoice.id;
@@ -121,9 +156,13 @@ export default {
                 alert('Reject failed: ' + err.message);
             }
         },
+
+
         openInvoice(invoice){                       
             this.showInvoice=JSON.stringify(invoice, null, 2);
         },
+
+
         renderCurrency(currency){
             if(currency=='USD'){
                 return "$";
@@ -133,11 +172,16 @@ export default {
                 return '?';
             }
         },
+
+
         async getInvoices(){
             const status = this.role == 'approver' ? 'HUMAN_REVIEW' : null;
             const result = await this.api.GetInvoices(status);
-            this.invoices = Array.isArray(result) ? result : [];
+            this.invoices = Array.isArray(result) ? result : [];                       
+            console.log("Invoices fetched", this.invoices);
         },
+
+
         applyNotificationToLocalInvoices(payload){
             if (!payload || !payload.tracking_id) {
                 return false;
@@ -162,11 +206,15 @@ export default {
             }
             return false;
         },
+
+
         onInvoiceEvent(payload){            
             if (!this.applyNotificationToLocalInvoices(payload)) {
                 this.getInvoices();
             }
         },
+
+
         onInvoiceRefresh(payload) {            
             if (payload && Array.isArray(payload.invoices)) {
                 this.invoices = payload.invoices;
@@ -174,6 +222,8 @@ export default {
                 this.getInvoices();
             }
         },
+
+
         renderDate(d){
             if (!d) {
                 return '-';
@@ -184,31 +234,7 @@ export default {
             }
             return parsed.toLocaleString();
         },
-        getExpectedRoute(invoice) {
-            if (!invoice || !invoice.expected || typeof invoice.expected !== 'object') {
-                return '-';
-            }
-            if(invoice.expected.route.toLowerCase()=='human_review'){
-                return "❌HUMAN_REVIEW";
-            }
-
-            if(invoice.expected.route.toLowerCase()=='reject'){
-                return "❌REJECT";
-            }
-
-            if(invoice.expected.route.toLowerCase()=='decline'){
-                return "❌DECLINE";
-            }
-            
-            if(invoice.expected.route.toLowerCase()=='approved'){
-                return "APPROVED";
-            }
-
-            if(invoice.expected.route.toLowerCase()=='auto_approve'){
-                return "✅AUTO_APPROVE";
-            }
-            return invoice.expected.route || '-';
-        },
+        
         getExpectedReason(invoice) {
             if (!invoice || !invoice.expected || typeof invoice.expected !== 'object') {
                 return '';

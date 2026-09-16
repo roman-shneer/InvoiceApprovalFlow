@@ -16,7 +16,7 @@ class InvoicesRepository {
     async sendInvoices(invoices, token) {
         const apiURL = process.env.INVOICE_URL;
         const results = [];
-        console.log("Token in sendInvoices:", token);
+
         for (var invoice of invoices) {
 
             const response = await fetch(apiURL, {
@@ -33,7 +33,6 @@ class InvoicesRepository {
                 results.push(result);
             }
         }
-        console.log("Results in sendInvoices:", results);
         return results;
     }
 
@@ -104,7 +103,7 @@ class InvoicesRepository {
         ]);
         //inform payment
         if (status == 'APPROVED') {
-            await this.daprClient.pubsub.publish(PUB_SUB_NAME, 'payment.requested', invoice);
+            await this.daprClient.pubsub.publish(PUB_SUB_NAME, 'invoice.payment', invoice);
         }
         return invoice;
 

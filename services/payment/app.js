@@ -149,7 +149,7 @@ async function processInvoicePayment(invoice) {
         const originalAmount = parseFloat(invoice.total || invoice.amount || 0);
         console.log(`[${trackingId}] Payment request received`);
 
-        if (invoice.status !== 'AUTO_APPROVE' && invoice.status !== 'APPROVED') {
+        if (!['AUTO_APPROVE', 'APPROVED', 'PROCESSING_PAYMENT'].includes(invoice.status)) {
             return 'REJECT';
         }
 
@@ -231,7 +231,7 @@ async function processInvoicePayment(invoice) {
 
             storedInvoice.payment = storedInvoice.payment || {};
             storedInvoice.payment.reservation = reservation;
-
+            storedInvoice.status = 'PAID';
             await saveInvoiceWithRetry(trackingId, storedInvoice);
         } catch (err) {
             console.error(`[${trackingId}] Failed to save reservation on invoice record:`, err.message);
@@ -296,50 +296,13 @@ async function processInvoicePayment(invoice) {
         return 'RETRY';
     }
 }
-//search once on starup for stuck invoices and process them
-async function processUnpaidInvoices() {
-    const response = await daprClient.state.query("mongo-invoices", {
-        filter: {
-            OR: [
-                {
-                    EQ: {
-                        status: 'AUTO_APPROVE'
-                    }
-                },
-                {
-                    EQ: {
-                        status: 'APPROVED'
-                    }
-                }
-            ]
-        },
-        page: { limit: 1000 },
-        sort: [
-            {
-                key: 'created_at',
-                order: 'ASC'
-            }
-        ]
-    });
-
-    console.log(`Found ${response.results.length} unpaid invoices to process`);
-
-    const invoices = response.results.map(item => {
-        return item.data || item.value;
-    });
-    for (const invoice of invoices) {
-        await processInvoicePayment(invoice);
-
-    }
-}
 
 async function start() {
-    await server.pubsub.subscribe(PUB_SUB, 'payment.requested', async (eventData) => {
+    await server.pubsub.subscribe(PUB_SUB, 'invoice.payment', async (eventData) => {
         return await processInvoicePayment(eventData.data || eventData);
     });
 
     await server.start();
-    await processUnpaidInvoices();
     console.log(`🚀 Payment Service started on port ${APP_PORT}`);
 }
 

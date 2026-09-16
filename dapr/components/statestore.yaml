@@ -9,12 +9,9 @@ spec:
   - name: redisHost
     value: redis:6379
   - name: redisPassword
-    secretKeyRef:
-      name: "redis-password"
-      key: "redis-password"
+    value: "your-redis-password"
   - name: enableTLS
     value: "false"
   - name: keyPrefix
     value: "approvalflow:"
-auth:
-  secretStore: approval-secret-store
+  

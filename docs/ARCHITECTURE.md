@@ -23,8 +23,15 @@ The system uses containerized microservices communicating via the **Dapr (Distri
 graph TD
     Client[Postman / Vue 3 UI] -->|HTTP Requests| Envoy[Envoy API Gateway: Port 8000]
     Envoy -->|Ingest Stream| Ingestion[Ingestion Service Node.js: Port 8001]
-    
-    subgraph Dapr Architectural Layer
+
+    subgraph Microservices Layer
+        Ingestion        
+        Governance[Governance Service Node.js]
+        Payment[Payment Service]
+        Management[Management Service Node.js / Vue 3]
+    end
+
+    subgraph Dapr Sidecar Layer
         Ingestion <-->|Sidecar IPC| Dapr1((Ingestion Dapr Sidecar))
         Governance <-->|Sidecar IPC| Dapr2((Governance Dapr Sidecar))
         Payment <-->|Sidecar IPC| Dapr3((Payment Dapr Sidecar))
@@ -32,29 +39,37 @@ graph TD
     end
 
     subgraph Infrastructure Components
-        Dapr1 -.->|Transactional Outbox| DB[(MongoDB Replica Set: Port 27017)]
         Dapr1 -.->|Idempotency Keys| Redis[(Redis Server: Port 6379)]
-        Dapr1 -.->|PubSub: invoice.submitted| Dapr2
-        Dapr2 -.->|PubSub: payment.requested| Dapr3
-        Dapr2 -.->|State: mongo-invoices| DB
-        Dapr3 -.->|State: mongo-invoices| DB
+        
+        %% Database Connections
+        Dapr1 -.->|Write PENDING State| DB[(MongoDB Replica Set: Port 27017)]
+        Dapr5 -.->|Poll & Mutate State| DB
+        Dapr2 -.->|Update Audit State| DB
+        Dapr3 -.->|Update Ledger State| DB
+
+        %% Dapr Pub/Sub Broker abstraction
+        Dapr5 -.->|Publish: invoice.pending| PubSub{Dapr Pub/Sub Broker}
+        Dapr5 -.->|Publish: invoice.payment| PubSub
+        PubSub -.->|Deliver Event| Dapr2
+        PubSub -.->|Deliver Event| Dapr3
     end
 
     subgraph Local Secure AI Boundary
-        Dapr2 -->|Local HTTP Inference| Ollama[Ollama Service: Llama 3]
+        Governance -->|Local HTTP Inference| Ollama[Ollama Service: Llama 3]
     end
 
     subgraph Observability Pipeline
-        Dapr1 -.->|OTel Spans Export| Zipkin[Zipkin Dashboard: Port 9411]
-        Dapr2 -.->|OTel Spans Export| Zipkin
-        Dapr3 -.->|OTel Spans Export| Zipkin
+        Dapr1 -.->|OTel Spans| Zipkin[Zipkin Dashboard: Port 9411]
+        Dapr2 -.->|OTel Spans| Zipkin
+        Dapr3 -.->|OTel Spans| Zipkin
+        Dapr5 -.->|OTel Spans| Zipkin
     end
 ```
 
 ### Microservice Directory
-1.  **Ingestion Service (Node.js Express):** Exposes a high-performance input boundary. It validates JSON schemas, processes incoming headers for MD5-hashed idempotency keys to short-circuit duplicates, and transactionally registers incoming requests into an outbox registry before dispatching events safely.
-2.  **Governance & AI Engine Agent (Node.js):** Evaluates deterministic hard stop constraints (currency checks, receipt requirements) and coordinates local asynchronous LLM inference cycles via Ollama. It enforces the database-driven autonomy thresholds.
-3.  **Payment Service:** Controls corporate asset movement. It tracks budget allocations, simulates edge-case connectivity status triggers with mock banking endpoints, and handles distributed consistency protocols.
+1.  **Ingestion Service (Node.js Express):** Exposes a high-performance input boundary. It validates JSON schemas, processes incoming headers for MD5-hashed idempotency keys in Redis to short-circuit duplicates, and writes new invoices directly with status PENDING into mongo-invoices.
+2.  **Governance & AI Engine Agent (Node.js):** Listens to invoice.pending events. Evaluates deterministic hard stop constraints (currency checks, receipt requirements) and coordinates local asynchronous LLM inference cycles via Ollama. Updates evaluation results (AUTO_APPROVE, APPROVED, REJECTED) back into mongo-invoices.
+3.  **Payment Service:** Controls corporate asset movement. Listens to invoice.payment events, tracks budget allocations, simulates edge-case connectivity status triggers with mock banking endpoints, and publishes terminal events (payment.confirmed / payment.failed).
 4.  **Management Service (Node.js + Vue 3):** Administrative backoffice backplane used to re-configure runtime autonomy ceiling properties dynamically inside MongoDB.
 
 ---
@@ -78,22 +93,24 @@ sequenceDiagram
     Client->>Envoy: POST /api/v1/expenses (Trace Context Attached)
     Envoy->>IS: Forward to Ingestion (Port 8001)
     Note over IS: Verifies Idempotency-Key via Redis<br/>Stitches W3C Trace Context
-    IS->>DB: Atomically persist key + outbox registry index
+    IS->>DB: Write invoice directly (Status: PENDING)
     IS-->>Client: 202 Accepted (Tracking ID: INV-1001)
-    
-    IS->>GS: Dapr Pub/Sub: invoice.submitted
     IS->>ZK: Export Ingestion Span
-    
-    Note over GS: Executes checkHardStops() -> Pass
-    Note over GS: Evaluates applyAutonomyOverride() -> Auto-Approve
+
+    Note over OS: Dapr Cron Job Triggers (mongo-event-cron)<br/>Queries mongo-invoices (limit: 1)
+    OS->>DB: Mutate status to PROCESSING
+    OS->>GS: Dapr Pub/Sub: invoice.pending
+
+    Note over GS: Evaluates applyOverride() -> Auto-Approve
     GS->>DB: Persist Audited Status: AUTO_APPROVE
-    
-    GS->>PS: Dapr Pub/Sub: payment.requested
-    GS->>ZK: Export Governance Engine Span
-    
+
+    Note over OS: Next Cron Cycle reads AUTO_APPROVE
+    OS->>DB: Mutate status to PROCESSING_PAYMENT
+    OS->>PS: Dapr Pub/Sub: invoice.payment
+
     Note over PS: Processes budget reserve<br/>Calls mock banking node -> Success
-    PS->>DB: Persist Ledger Status: CONFIRMED
-    PS->>GS: Dapr Pub/Sub: payment.confirmed
+    PS->>DB: Persist Ledger Status: PAID
+    PS->>OS: Dapr Pub/Sub: payment.confirmed
     PS->>ZK: Export Payment Span
 ```
 
@@ -105,46 +122,47 @@ sequenceDiagram
     autonumber
     actor Client as Client / Postman
     participant IS as Ingestion Service
+    participant DB as MongoDB State Store    
     participant GS as Governance Engine
-    participant DB as MongoDB State Store
 
     Client->>IS: POST /api/v1/expenses (Amount: \$1250.00)
+    IS->>DB: Save invoice (Status: PENDING)
     IS-->>Client: 202 Accepted (Tracking ID: INV-1007)
-    IS->>GS: Dapr Pub/Sub: invoice.submitted
     
-    Note over GS: applyAutonomyOverride Triggered:<br/>\$1250 exceeds database AUTONOMY-CEILING limit (\$250).
-    Note over GS: Forcing State: HUMAN_REVIEW
-    GS->>DB: Save to mongo-invoices with triggered_rules: ["AUTONOMY-CEILING"]
-    Note over GS: Durable execution sequence paused for manual backoffice resume
+    Note over OS: Cron picks up PENDING invoice
+    OS->>DB: Lock status to PROCESSING
+    OS->>GS: Dapr Pub/Sub: invoice.pending
+    
+    Note over GS: applyOverride Triggered:<br/>\$1250 exceeds AUTONOMY-CEILING (\$250).
+    GS->>DB: Save to mongo-invoices (Status: HUMAN_REVIEW, triggered_rules: ["AUTONOMY-CEILING"])
+    Note over GS: Execution sequence paused for manual backoffice review
 ```
 
 ---
 
 ## 4. Transaction Consistency Protocol: The Payment Saga
 
-To guarantee structural ledger alignment without locking underlying distributed databases, the platform relies on a **Choreographed Saga Pattern** utilizing event-driven microservices.
+To guarantee structural ledger alignment without locking underlying distributed databases, the platform relies on an Orchestrated Saga Pattern utilizing event-driven microservices (0008-payment-saga.md).
 
 ```mermaid
-graph TD
-    Trigger([Autonomous Approval Issued]) --> Step1[Payment Service: Allocate Corporate Balance Reserve]
+graph TD    
     Step1 -->|Success| Step2[Payment Service: Post Entry via Mock Bank Endpoint]
-    Step2 -->|HTTP 200: Transaction Ok| Commit[Complete Saga: Update State to CONFIRMED]
+    Step2 -->|HTTP 200: Transaction Ok| Commit[Complete Saga: Update State to PAID & Publish payment.confirmed]
     
     %% Failure Exception Pathways
     Step2 -->|Bank Rejection / bank_node_available: false| Comp1[Compensating Step: Trigger Saga Rollback]
     Comp1 --> Reset[State Store: Set REJECTED_ROLLBACK & Release Reserved Budget]
-    Reset --> Emit[Publish Event: payment.failed.compensate]
+    Reset --> Emit[Publish Event: payment.failed]
 ```
 
 ### Rollback Process Mechanics (Journey INV-1012)
 1.  **Initial Reserve:** `Payment Service` locks internal funds matching the invoice value to prevent over-allocation.
 2.  **External Link Failure:** The simulated banking node throws a network connection timeout or a simulated rejection (`bank_node_available: false`).
-3.  **Trigger Compensation:** The service catches the exception, updates the transaction state model to `REJECTED_ROLLBACK`, and programmatically releases the locked budget reserve.
-4.  **Final Sync:** `Payment Service` publishes a `payment.failed.compensate` message to notify downstream audit logs and administration panels.
+3.  **Trigger Compensation:** The service catches the exception, updates the transaction state model to `REJECTED_ROLLBACK`, releases the locked budget reserve, and publishes `payment.failed`.
 
 ---
 
 ## 5. Defensive Coding & Idempotency Safeguards
 
 ### Inbound De-duplication (Journey INV-1003)
-Every submission payload is hashed using an MD5 encryption sequence based on `vendor`, `invoiceNumber`, and `total` parameters. If a subsequent request matches an active concurrency transaction key inside Redis, the Ingestion layer short-circuits execution path completely, returning the original `200 OK PROCESSING` schema state without generating secondary downstream pub/sub streaming events.
+Every submission payload is hashed using an MD5 encryption sequence based on vendor, `invoiceNumber`, and `total` parameters. If a subsequent request matches an active concurrency transaction key inside Redis, the Ingestion layer short-circuits execution completely, returning the original `200 OK PROCESSING` schema state without generating duplicate database records or triggering downstream orchestrator cycles.

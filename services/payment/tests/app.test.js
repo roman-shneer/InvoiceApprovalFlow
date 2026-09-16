@@ -48,10 +48,10 @@ describe('Payment Service Tests', () => {
         });
     });
 
-    test('subscribes to payment.requested and starts the server', () => {
+    test('subscribes to invoice.payment and starts the server', () => {
         expect(mockServerSubscribe).toHaveBeenCalledWith(
             'approval-pubsub',
-            'payment.requested',
+            'invoice.payment',
             expect.any(Function)
         );
         expect(typeof appCallback).toBe('function');

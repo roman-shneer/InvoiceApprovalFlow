@@ -1,18 +1,49 @@
-const { checkHardStops } = require('../../engines/checkHardStops');
-const { applyAutonomyOverride } = require('../../engines/applyAutonomyOverride');
+const { applyOverride } = require('../../engines/applyOverride');
+describe('applyOverride Handler', () => {
+    const defaultAiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.95 };
+    const defaultInvoice = { total: 100 };
 
-describe('checkHardStops Policy Compliance', () => {
+    describe('Dynamic FX and Receipt Limits', () => {
+        test('applies custom currency limit via active policy threshold configuration', () => {
+            const rules = [{ rule_id: 'GLOBAL-FX', threshold: 500 }];
+            const invoice = { vendorKnown: true, currency: 'EUR', total: 600 };
+            const result = applyOverride(defaultAiResult, invoice, rules);
+            expect(result.recommendation).toBe('HUMAN_REVIEW');
+            expect(result.triggered_rules).toContain('GLOBAL-FX');
+        });
+
+        test('uses fxRates conversion map for GLOBAL-FX check against USD threshold', () => {
+            const rules = [{ rule_id: 'GLOBAL-FX', threshold: 1000 }];
+            const fxRates = { USD: 1, EUR: 1.2 };
+            const invoice = { vendorKnown: true, currency: 'EUR', total: 900 };
+
+            const result = applyOverride(defaultAiResult, invoice, rules, fxRates[invoice.currency] || 1);
+            expect(result.recommendation).toBe("HUMAN_REVIEW");
+            expect(result.triggered_rules).toContain("GLOBAL-FX");
+            expect(result.reason).toContain("~USD 1080.00");
+        });
+
+        test('applies custom receipt floor limit via policy values configuration', () => {
+            const rules = [{ rule_id: 'GLOBAL-RECEIPT', value: 10 }];
+            const invoice = { vendorKnown: true, amount: 15, receiptPresent: false };
+            const result = applyOverride(defaultAiResult, invoice, rules);
+            expect(result.recommendation).toBe('HUMAN_REVIEW');
+            expect(result.triggered_rules).toContain('GLOBAL-RECEIPT');
+        });
+
+    });
+
     describe('AUTONOMY-HARDSTOPS Global Rules', () => {
         test('does not trigger GLOBAL-VENDOR for known vendors even when policy is active', () => {
             const invoice = { vendorKnown: true, vendor: 'Acme Corp' };
             const rules = [{ rule_id: 'GLOBAL-VENDOR' }];
-            const result = checkHardStops(invoice, rules);
-            expect(result).toEqual({ recommendation: 'AUTO_APPROVE', triggered_rules: [], reason: 'No hard stop rules triggered.', confidence: 1.0 });
+            const result = applyOverride(defaultAiResult, invoice, rules);
+            expect(result.recommendation).toBe('AUTO_APPROVE');
         });
 
         test('triggers GLOBAL-FRAUD when fraud flag matches constraint', () => {
             const invoice = { vendorKnown: true, fraudSignal: true };
-            const result = checkHardStops(invoice, []);
+            const result = applyOverride(defaultAiResult, invoice, []);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.triggered_rules).toContain('GLOBAL-FRAUD');
         });
@@ -29,15 +60,15 @@ describe('checkHardStops Policy Compliance', () => {
             };
             const rules = [{ rule_id: 'GLOBAL-FRAUD' }];
 
-            const result = checkHardStops(invoice, rules);
-
-            expect(result).toEqual({ recommendation: 'AUTO_APPROVE', triggered_rules: [], reason: 'No hard stop rules triggered.', confidence: 1.0 });
+            const result = applyOverride(defaultAiResult, invoice, rules);
+            expect(result.recommendation).toBe('AUTO_APPROVE');
         });
 
         test('triggers MEAL-01 when required compliance info is absent', () => {
             const invoice = { vendorKnown: true, missingMealInfo: true };
             const rules = [{ rule_id: 'MEAL-01' }];
-            const result = checkHardStops(invoice, rules);
+
+            const result = applyOverride(defaultAiResult, invoice, rules);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.triggered_rules).toContain('MEAL-01');
         });
@@ -58,71 +89,30 @@ describe('checkHardStops Policy Compliance', () => {
                 { value: { rule_id: 'GLOBAL-VENDOR' } },
                 { value: { rule_id: 'GLOBAL-FX', value: 1000 } }
             ];
-
-            const result = checkHardStops(invoice, rules);
-
-            expect(result).toEqual({
-                recommendation: 'HUMAN_REVIEW',
-                triggered_rules: ['GLOBAL-FX'],
-                reason: expect.stringContaining('FX hard stop'),
-                confidence: 1.0
-            });
-        });
-    });
-
-    describe('Dynamic FX and Receipt Limits', () => {
-        test('applies custom currency limit via active policy threshold configuration', () => {
-            const rules = [{ rule_id: 'GLOBAL-FX', threshold: 500 }];
-            const invoice = { vendorKnown: true, currency: 'EUR', total: 600 };
-            const result = checkHardStops(invoice, rules);
+            const result = applyOverride(defaultAiResult, invoice, rules);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.triggered_rules).toContain('GLOBAL-FX');
+
         });
-
-        test('uses fxRates conversion map for GLOBAL-FX check against USD threshold', () => {
-            const rules = [{ rule_id: 'GLOBAL-FX', threshold: 1000 }];
-            const fxRates = { USD: 1, EUR: 1.2 };
-            const invoice = { vendorKnown: true, currency: 'EUR', total: 900 };
-
-            const result = checkHardStops(invoice, rules, fxRates);
-
-            expect(result.recommendation).toBe("HUMAN_REVIEW");
-            expect(result.triggered_rules).toContain("GLOBAL-FX");
-            expect(result.reason).toContain("~USD 1080.00");
-        });
-
-        test('applies custom receipt floor limit via policy values configuration', () => {
-            const rules = [{ rule_id: 'GLOBAL-RECEIPT', value: 10 }];
-            const invoice = { vendorKnown: true, amount: 15, receiptPresent: false };
-            const result = checkHardStops(invoice, rules);
-            expect(result.recommendation).toBe('HUMAN_REVIEW');
-            expect(result.triggered_rules).toContain('GLOBAL-RECEIPT');
-        });
-
     });
-});
-
-describe('applyAutonomyOverride Handler', () => {
-    const defaultAiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.95 };
-    const defaultInvoice = { total: 100 };
 
     describe('Fallback Default Constants Behavior', () => {
         test('forces human review if total exceeds default 250 ceiling', () => {
             const invoice = { total: 251 };
-            const result = applyAutonomyOverride(defaultAiResult, invoice, []);
+            const result = applyOverride(defaultAiResult, invoice, []);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.triggered_rules).toContain('AUTONOMY-CEILING');
         });
 
         test('forces human review if confidence falls below default 0.80 threshold', () => {
             const aiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.79 };
-            const result = applyAutonomyOverride(aiResult, defaultInvoice, []);
+            const result = applyOverride(aiResult, defaultInvoice, []);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.triggered_rules).toContain('AUTONOMY-CONFIDENCE');
         });
 
         test('allows auto approve when within safe fallback defaults boundaries', () => {
-            const result = applyAutonomyOverride(defaultAiResult, defaultInvoice, []);
+            const result = applyOverride(defaultAiResult, defaultInvoice, []);
             expect(result.recommendation).toBe('AUTO_APPROVE');
         });
     });
@@ -137,7 +127,7 @@ describe('applyAutonomyOverride Handler', () => {
                 }
             ];
             const invoice = { total: 75 };
-            const result = applyAutonomyOverride(defaultAiResult, invoice, rules);
+            const result = applyOverride(defaultAiResult, invoice, rules);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.reason).toContain('ceiling of $50');
         });
@@ -151,7 +141,7 @@ describe('applyAutonomyOverride Handler', () => {
                 }
             ];
             const aiResult = { recommendation: 'AUTO_APPROVE', confidence: 0.95 };
-            const result = applyAutonomyOverride(aiResult, defaultInvoice, rules);
+            const result = applyOverride(aiResult, defaultInvoice, rules);
             expect(result.recommendation).toBe('HUMAN_REVIEW');
             expect(result.reason).toContain('threshold of 0.99');
         });

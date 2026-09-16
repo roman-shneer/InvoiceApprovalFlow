@@ -91,7 +91,7 @@ describe('InvoicesRepository', () => {
         expect(save).toHaveBeenCalledWith('mongo-invoices', [
             { key: 'invoice-1', value: { tracking_id: 'invoice-1', status: 'APPROVED', amount: 100 } }
         ]);
-        expect(publish).toHaveBeenCalledWith('approval-pubsub', 'payment.requested', {
+        expect(publish).toHaveBeenCalledWith('approval-pubsub', 'invoice.payment', {
             tracking_id: 'invoice-1',
             status: 'APPROVED',
             amount: 100

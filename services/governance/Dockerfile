@@ -1,8 +1,7 @@
 FROM node:20-slim
 
 WORKDIR /app
-
-COPY ./services/governance/package*.json ./
+COPY package*.json ./
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
@@ -12,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN npm install  --omit=dev
 
-COPY ./services/governance/ .
+COPY . .
 
 EXPOSE 8002
 

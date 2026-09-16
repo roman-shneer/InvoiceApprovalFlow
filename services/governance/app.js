@@ -1,23 +1,24 @@
 const express = require('express');
 const { DaprServer, DaprClient } = require('@dapr/dapr');
-const { classifyInvoiceWithLocalAI } = require('./resources/ai');
-const { checkHardStops } = require('./engines/checkHardStops');
-const { applyAutonomyOverride } = require('./engines/applyAutonomyOverride');
+const { aiManager, anonymizeInvoice } = require('./managers/aiManager');
+const { applyOverride } = require('./engines/applyOverride');
 const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
-const { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices } = require('./resources/db');
-const { initRagEngine, retrieveRelevantPolicies } = require('./resources/ragEngine');
-
-const appPort = "8002";
+const { getPolicies, saveInvoiceToMongo, getPendingInvoices, getFxRate } = require('./resources/db');
+const { RagEngine } = require('./resources/ragEngine');
+const ragEngine = new RagEngine();
+const appPort = process.env.APP_PORT || "8002";
 const daprHost = process.env.DAPR_HOST || "127.0.0.1";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
+
+
 const PUB_SUB_NAME = "approval-pubsub";
-const PUB_SUB_TOPIC = 'invoice.submitted'
+
+
+const NOTIFICATION_PENDING_TOPIC = 'invoice.pending';
 const NOTIFICATION_PROCESSED_TOPIC = "invoice.processed";
-const NOTIFICATION_RETRY_TOPIC = "invoice.failed-to-save";
-const NOTIFICATION_PAYMENT_REQUESTED_TOPIC = "payment.requested";
-
-const MAX_RETRIES = 5;
-
+const NOTIFICATION_REVIEW_TOPIC = "invoice.review";
+const NOTIFICATION_PAYMENT_TOPIC = "invoice.payment";
+//dapr init
 const daprClient = new DaprClient({
     daprHost: daprHost,
     daprPort: daprPort,
@@ -31,66 +32,97 @@ const server = new DaprServer({
 });
 
 
+
+const POD_NAME = process.env.HOSTNAME || 'pod-1';
+const STATE_STORE = 'approval-state';
+const LEADER_KEY = 'leader:reclaimer';
+
+let isLeader = false;
+
+// 1. Try to become leader via Dapr State only - no Redis
+async function electLeader() {
+    try {
+        const [entry] = await daprClient.state.getBulk(STATE_STORE, [LEADER_KEY]);
+
+        if (!entry?.data || Date.now() - entry.data.ts > 30000) {
+            // no leader or expired - try to take it
+            await daprClient.state.save(STATE_STORE, [{
+                key: LEADER_KEY,
+                value: { pod: POD_NAME, ts: Date.now() },
+                etag: entry?.etag,
+                options: entry?.data ? undefined : { concurrency: 'first-write' }
+            }]);
+            if (!isLeader) console.log(`[${POD_NAME}] I'm LEADER now`);
+            isLeader = true;
+        } else if (entry.data.pod === POD_NAME) {
+            // renew my leadership
+            await daprClient.state.save(STATE_STORE, [{
+                key: LEADER_KEY,
+                value: { pod: POD_NAME, ts: Date.now() },
+                etag: entry.etag
+            }]);
+            isLeader = true;
+        } else {
+            isLeader = false;
+        }
+    } catch {
+        isLeader = false;
+    }
+}
+console.log("POD_NAME:", POD_NAME);
+
+
+
+async function resolveFxRate(invoice) {
+    if (invoice.currency !== 'USD') {
+        const rateEntry = await getFxRate(invoice.currency, invoice.date);
+        if (rateEntry && rateEntry.rate) {
+            return rateEntry.rate;
+        }
+    }
+
+    return 1;
+}
 async function processInvoice(trackingId, invoice) {
     const correlationId = invoice.correlation_id || "unknown";
-
     // Initialize empty buckets to accumulate ALL audit findings across the matrix boundaries
     let allTriggeredRules = [];
     let allReasons = [];
     console.log(`[${trackingId}] Processing`);
-    await saveInvoiceToMongo((invoice.status = 'PROCESSING', invoice));
+    invoice.status = 'PROCESSING';
+    await saveInvoiceToMongo(invoice);
     await publishInvoiceNotification(invoice, NOTIFICATION_PROCESSED_TOPIC);
     try {
         const activeRules = await getPolicies();
-        const fxRates = await getFxRates();
-
-        // 1. Evaluate Deterministic Hard Stops Registry (Gathering all matching violations)
-        const hardStop = checkHardStops(invoice, activeRules, fxRates);
+        const rate = await resolveFxRate(invoice);
         let aiResult;
         try {
-            const dynamicPolicyContext = await retrieveRelevantPolicies(invoice);
-            console.log(`[${trackingId}] RAG Context Retrieved:\n${dynamicPolicyContext}`);
-            aiResult = await classifyInvoiceWithLocalAI(invoice, dynamicPolicyContext);
+
+            const ragPolicies = await ragEngine.retrieveRelevantPolicies(invoice, activeRules);
+            const anonymizedInvoice = anonymizeInvoice(invoice, rate);
+            const provider = await aiManager();
+            aiResult = await provider.requestModel(trackingId, anonymizedInvoice, ragPolicies);
+
         } catch (err) {
-            aiResult = evaluateInvoiceWithAI(invoice, await getPolicies());
+            aiResult = evaluateInvoiceWithAI(invoice, activeRules);
             console.log(`[${trackingId}] ERROR: AI failure context: ${err.message}. Triggered static heuristics.`);
         }
 
 
-        console.log(`[${trackingId}] AI Evaluation Result: ${JSON.stringify(aiResult)}`);
+        invoice.audit_metadata = applyOverride(aiResult, invoice, activeRules, rate);
 
-        // 3. Evaluate Dynamic Autonomy Ceilings and Confidence Boundaries Thresholds
-        const finalResult = applyAutonomyOverride(aiResult, invoice, activeRules, hardStop);
-        const finalStatus = finalResult.recommendation;
-        const aiApproved = finalStatus === 'AUTO_APPROVE';
+        invoice.status = invoice.audit_metadata.recommendation;
+        const aiApproved = invoice.status === 'AUTO_APPROVE';
 
-        // 5. Atomic state synchronization layer execution
-        invoice.status = finalStatus;
-        invoice.audit_metadata = {
-            checked_at: new Date().toISOString(),
-            reason: finalResult.reason,
-            triggered_rules: finalResult.triggered_rules,
-            confidence: finalResult.confidence || 0,
-        };
 
         await saveInvoiceToMongo(invoice);
-        await publishInvoiceNotification(invoice, NOTIFICATION_PROCESSED_TOPIC);
-
-        // 6. Payment initiation routing boundary logic
-        if (aiApproved) {
-            try {
-                if (!invoice.payment_requested) {
-                    invoice.payment_requested = true;
-                    await publishInvoiceNotification(invoice, NOTIFICATION_PAYMENT_REQUESTED_TOPIC);
-                    console.log(`[${trackingId}] Published payment.requested for ${trackingId}`);
-                } else {
-                    console.log(`[${trackingId}] payment.requested already set; skipping publish`);
-                }
-            } catch (err) {
-                console.error(`[${trackingId}] Failed to publish payment.requested:`, err.message);
-            }
-        }
-
+        await publishInvoiceNotification(invoice, NOTIFICATION_PAYMENT_TOPIC);
+        //mark as done in state store to prevent reprocessing
+        await daprClient.state.save(STATE_STORE_NAME, [{
+            key: invoice.idempotency_key,
+            value: { tracking_id: trackingId, correlation_id: correlationId, status: 'DONE' },
+            metadata: { ttlInSeconds: '86400' }
+        }]);
     } catch (error) {
         console.error(`[${trackingId}] Critical failure inside background worker:`, error.message);
         try {
@@ -102,7 +134,7 @@ async function processInvoice(trackingId, invoice) {
                 confidence: 0
             };
             await saveInvoiceToMongo(invoice);
-            await publishInvoiceNotification(invoice, NOTIFICATION_PROCESSED_TOPIC);
+            await publishInvoiceNotification(invoice, NOTIFICATION_REVIEW_TOPIC);
         } catch (persistErr) {
             console.error(`[${trackingId}] Failed to persist fallback HUMAN_REVIEW state:`, persistErr.message);
         }
@@ -110,27 +142,34 @@ async function processInvoice(trackingId, invoice) {
 
 }
 
-async function startWorkerLoop() {
-    while (true) {
-        const invoices = await getPendingInvoices('PENDING', 1);
-        if (invoices && invoices.length > 0) {
-            const invoice = invoices[0];
-            const trackingId = invoice.tracking_id || invoice.id;
-            await processInvoice(trackingId, invoice);
-            await new Promise(res => setTimeout(res, 250));
-        } else {
-            await new Promise(res => setTimeout(res, 2000));
+async function reclaim() {
+    const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+
+    const result = await daprClient.state.query(STATE_STORE_NAME, {
+        filter: {
+            AND: [
+                { EQ: { status: 'PROCESSING' } },
+                { LT: { lockedAt: cutoff } }
+            ]
+        },
+        page: { limit: 20 }
+    });
+
+    for (const item of result.results) {
+        try {
+            await daprClient.state.save(STATE_STORE_NAME, [{
+                key: item.key,
+                value: { ...item.data, lockedBy: process.env.HOSTNAME, lockedAt: new Date().toISOString() },
+                etag: item.etag,
+                options: { concurrency: 'first-write' }
+            }]);
+
+            console.log(`Reposting stucked ${item.key}`);
+            await daprClient.pubsub.publish("approval-pubsub", "invoice-pending", item.data.payload);
+
+        } catch (e) {
+            continue;
         }
-    }
-}
-
-
-async function checkStuckInvoices() {
-    const invoices = await getPendingInvoices('PROCESSING', 1000);
-
-    for (const invoice of invoices) {
-        console.log(`[${invoice.tracking_id}] Reprocessing pending invoice`);
-        await publishInvoiceNotification(invoice, PUB_SUB_TOPIC);
     }
 }
 
@@ -156,93 +195,47 @@ async function startServerWithRetry() {
     }
 }
 
+const queue = [];
+let isProcessing = false;
+
+async function processQueue() {
+    if (isProcessing || queue.length === 0) return;
+    isProcessing = true;
+    const { trackingId, invoice } = queue.shift();
+
+    try {
+        await processInvoice(trackingId, invoice);
+    } finally {
+        isProcessing = false;
+        processQueue(); // берем следующий
+    }
+}
+
 async function start() {
-
-    await initRagEngine(); // <--- start indexing policies at startup
-
     await server.pubsub.subscribe(
         PUB_SUB_NAME,
-        PUB_SUB_TOPIC,
+        NOTIFICATION_PENDING_TOPIC, // 'invoice.pending'
         async (eventData) => {
-            try {
-                const invoice = eventData && eventData.data ? eventData.data : eventData;
-                console.log(`[${invoice.tracking_id}] Incoming invoice received via Pub/Sub`);
-                //WILL BE PROCESSED in TOUR startWorkerLoop() function, so we just save it to mongo and return SUCCESS            
-                saveInvoiceToMongo((invoice.status = 'PENDING', invoice)).catch(async (dbErr) => {
-                    //if mongo dead - send to pubsub invoice.failed-to-save to retry later
-                    console.error(`[${invoice.tracking_id}] Failed asynchronous background Mongo save:`, dbErr.message);
-                    publishInvoiceNotification({
-                        invoice,
-                        error: dbErr.message,
-                        retryCount: 0
-                    }, NOTIFICATION_RETRY_TOPIC).catch(pubSubErr => {
-                        console.error("CRITICAL ERROR: Pub/Sub is also unavailable!", pubSubErr.message);
-                    });
-                });
-                return "SUCCESS";
+            const invoice = eventData && eventData.data ? eventData.data : eventData;
+            const trackingId = invoice.tracking_id || invoice.id;
 
+            console.log(`[${trackingId}] Queued. Queue size: ${queue.length + 1}`);
+            queue.push({ trackingId, invoice });
+            processQueue();
 
-            } catch (err) {
-                console.error("!!! ERROR IN INVOICE PROCESSING STREAM !!!", err.message);
-                return "RETRY";
-            }
-        }
-    );
-
-    // Subscribe to the "invoice.failed-to-save" topic to handle invoices that failed to save to MongoDB
-    await server.pubsub.subscribe(
-        PUB_SUB_NAME,
-        NOTIFICATION_RETRY_TOPIC,
-        async (eventData) => {
-            const payload = eventData?.data || eventData;
-            const invoice = payload.invoice;
-            let currentRetry = payload.retryCount !== undefined ? payload.retryCount : 1;
-            const trackingId = invoice.tracking_id || invoice.id || "unknown";
-
-            try {
-                console.log(`[${trackingId}] Attempting to re-save invoice from the backup queue...`);
-                await saveInvoiceToMongo(invoice);
-                console.log(`[${trackingId}] Successfully saved! MongoDB has recovered.`);
-                return "SUCCESS";
-            } catch (err) {
-                console.error(`[${trackingId}] The database is still there. Leaving it in the Redis queue for retry.`, err.message);
-                if (currentRetry >= MAX_RETRIES) {
-                    console.error(`[${trackingId}] CRITICAL ERROR: Invoice exceeded ${MAX_RETRIES} attempts. Sending to log/human.`);
-                    await saveToFile(invoice, err.message);
-                    return "SUCCESS";
-                }
-                currentRetry++;
-                await publishInvoiceNotification({
-                    invoice,
-                    error: err.message,
-                    retryCount: currentRetry
-                }, NOTIFICATION_RETRY_TOPIC).catch(pubSubErr => {
-                    console.error("CRITICAL ERROR: Even Redis is unavailable for retry!", pubSubErr.message);
-                });
-                return "SUCCESS";
-            }
-        }
+            return "SUCCESS";
+        },
+        undefined,
+        { concurrency: "1" }
     );
 
     await startServerWithRetry();
-
-
-
-
-
-
-    // Replay any previously stuck PROCESSING invoices   
-    if (process.env.NODE_ENV !== 'test') {
-        try {
-            await checkStuckInvoices();
-        } catch (err) {
-            console.error(`[governance-startup] Failed to replay pending invoices:`, err.message);
-        }
-        startWorkerLoop();
-    }
-
+    setInterval(electLeader, 10000);
+    setInterval(reclaim, 2 * 60 * 1000); // every 2 min, only leader will actually run
+    electLeader();
 }
 
+/*
 async function saveToFile(invoice, message) {
     const deadLetterPayload = {
         failed_at: new Date().toISOString(),
@@ -261,7 +254,7 @@ async function saveToFile(invoice, message) {
     });
 }
 
-
+*/
 
 async function publishInvoiceNotification(pendingInvoice, topic = NOTIFICATION_PROCESSED_TOPIC) {
     if (!pendingInvoice) return;

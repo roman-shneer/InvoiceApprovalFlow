@@ -9,6 +9,7 @@ function evaluateInvoiceWithAI(invoice, rules) {
     const total = parseFloat(invoice.total || 0);
     const category = String(invoice.category || "General").toLowerCase();
     const vendor = String(invoice.vendor || "Unknown").toLowerCase();
+    const vendorKnown = invoice.vendorKnown || false;
 
     let recommendation = "AUTO_APPROVE";
     let triggered_rules = []; // FIXED: Renamed from triggeredRules to match database and test schemas
@@ -26,7 +27,7 @@ function evaluateInvoiceWithAI(invoice, rules) {
     );
 
     // 1. Global Vendor Validation Check
-    if (dbRuleIds.has("GLOBAL-VENDOR") && ["unknown", "brand-new vendor", "unverified"].includes(vendor)) {
+    if (dbRuleIds.has("GLOBAL-VENDOR") && (["unknown", "brand-new vendor", "unverified"].includes(vendor) || vendorKnown === false)) {
         return {
             recommendation: "HUMAN_REVIEW",
             triggered_rules: ["GLOBAL-VENDOR"],
@@ -49,7 +50,9 @@ function evaluateInvoiceWithAI(invoice, rules) {
         }
     }
 
-    return { recommendation, triggered_rules, reason };
+    const confidence = recommendation === "AUTO_APPROVE" ? 1.0 : 0.0;
+    const model = "FALLBACK_RULE_ENGINE";
+    return { recommendation, triggered_rules, reason, confidence, model };
 }
 
 module.exports = { evaluateInvoiceWithAI };

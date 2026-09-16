@@ -30,7 +30,8 @@ db.policies.insertMany([
     {
         "_id": "TRAVEL-01",
         "_key": "TRAVEL-01",
-        "value": { "rule_id": "TRAVEL-01", "category": "Travel", "rule_text": "Economy flights and standard hotels are policy-eligible.", "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "TRAVEL-01", "category": "Travel", "rule_text": "Non-economy flights or luxury hotels. Trigger ONLY IF class is First/Business OR hotel is Luxury.", "is_active": true, "created_at": new Date() },
+        //"value": { "rule_id": "TRAVEL-01", "category": "Travel", "rule_text": "Economy flights and standard hotels are policy-eligible.", "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
@@ -93,7 +94,8 @@ db.policies.insertMany([
     {
         "_id": "GLOBAL-MATH",
         "_key": "GLOBAL-MATH",
-        "value": { "rule_id": "GLOBAL-MATH", "category": "Global rules", "rule_text": "The line items + tax must reconcile to total.", "is_active": true, "created_at": new Date() },
+        //"value": { "rule_id": "GLOBAL-MATH", "category": "Global rules", "rule_text": "The line items + tax must reconcile to total.", "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "GLOBAL-MATH", "category": "Global rules", "rule_text": "Trigger this rule if 'discrepancy' is not 0 OR if ('calculatedLineItemsSum' + 'taxAmount') does not equal 'total'. Any mismatch between line items and total MUST be flagged under this rule code.", "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
@@ -107,17 +109,28 @@ db.policies.insertMany([
     {
         "_id": "AUTONOMY-CEILING",
         "_key": "AUTONOMY-CEILING",
-        "value": { "rule_id": "AUTONOMY-CEILING", "category": "autonomy", "rule_text": 250, "is_active": true, "created_at": new Date() },
+        //"value": { "rule_id": "AUTONOMY-CEILING", "category": "autonomy", "rule_text": "The agent may auto-approve only when the USD amount is **≤ $250**. Above this → human, *even at confidence 1.0*. ", "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "AUTONOMY-CEILING", "category": "autonomy", "rule_text": "The agent may auto-approve only when the USD amount is **<= $250**. Above this → human, *even at confidence 1.0*. ", "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
     {
         "_id": "AUTONOMY-CONFIDENCE",
         "_key": "AUTONOMY-CONFIDENCE",
-        "value": { "rule_id": "AUTONOMY-CONFIDENCE", "category": "autonomy", "rule_text": 0.80, "is_active": true, "created_at": new Date() },
+        //"value": { "rule_id": "AUTONOMY-CONFIDENCE", "category": "autonomy", "rule_text": "The agent may auto-approve only when its `confidence` is **≥ 0.80**. Below → human.", "is_active": true, "created_at": new Date() },
+        "value": { "rule_id": "AUTONOMY-CONFIDENCE", "category": "autonomy", "rule_text": "The agent may auto-approve only when its `confidence` is **<= 0.80**. Below → human.", "is_active": true, "created_at": new Date() },
         "_etag": crypto.randomUUID(),
         "_ttl": null
-    }
+    },
+    /*
+    {
+        "_id": "AUTONOMY-HARDSTOPS",
+        "_key": "AUTONOMY-HARDSTOPS",
+        "value": { "rule_id": "AUTONOMY-HARDSTOPS", "category": "autonomy", "rule_text": "Regardless of amount/confidence, these **always** force a human: new/unknown vendor (`GLOBAL-VENDOR`), FX hard stop (`GLOBAL-FX`), math mismatch (`GLOBAL-MATH`), any fraud signal (`GLOBAL-FRAUD`), missing required receipt (`GLOBAL-RECEIPT`), missing required info (`MEAL-01`/`MEAL-02`).", "is_active": true, "created_at": new Date() },
+        "_etag": crypto.randomUUID(),
+        "_ttl": null
+    }*/
+
 ]);
 db.policies.createIndex({ "_key": 1 }, { unique: true });
 
@@ -150,22 +163,22 @@ db.budgets.createIndex({ "_key": 1 }, { unique: true });
 db.fxRates.drop();
 db.fxRates.insertMany([
     {
-        "_id": "USD",
-        "_key": "USD",
+        "_id": "USD_2026-05-15",
+        "_key": "USD_2026-05-15",
         "value": { "rate": 1.0 },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
     {
-        "_id": "EUR",
-        "_key": "EUR",
+        "_id": "EUR_2026-05-15",
+        "_key": "EUR_2026-05-15",
         "value": { "rate": 1.08 },
         "_etag": crypto.randomUUID(),
         "_ttl": null
     },
     {
-        "_id": "GBP",
-        "_key": "GBP",
+        "_id": "GBP_2026-05-15",
+        "_key": "GBP_2026-05-15",
         "value": { "rate": 1.25 },
         "_etag": crypto.randomUUID(),
         "_ttl": null

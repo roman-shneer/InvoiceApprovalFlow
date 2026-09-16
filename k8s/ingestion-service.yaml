@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: app
-        image: governance-service:latest
+        image: governance-service:v3
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8002
@@ -28,6 +28,8 @@ spec:
           value: "127.0.0.1"
         - name: DAPR_HTTP_PORT
           value: "3500"
+        - name: OLLAMA_API_URL
+          value: "http://ollama-service:11434"
         - name: MONGO_DB
           valueFrom:
             configMapKeyRef:

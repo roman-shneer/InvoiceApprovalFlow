@@ -6,21 +6,13 @@ spec:
   type: pubsub.redis
   version: v1
   metadata:
-  
-  - name: redisHost
-    value: redis:6379
-  - name: redisPassword
-    secretKeyRef:
-      name: "redis-password"
-      key: "redis-password"
-
-  - name: consumerID
-    value: "approval-flow-group2"
-  - name: enableTLS
-    value: "false"
-  - name: rawPayload
-    value: "true"
-  - name: contentType
-    value: "application/json"
-auth:
-  secretStore: approval-secret-store
+    - name: redisHost
+      value: redis:6379
+    - name: redisPassword
+      value: "your-redis-password"
+    - name: consumerID
+      value: approval-flow-group
+    - name: enableTLS
+      value: "false"
+  auth:
+    secretStore: approval-secret-store

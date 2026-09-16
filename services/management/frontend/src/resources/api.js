@@ -261,7 +261,6 @@ class Api {
     }
 
     async SendInvoice(invoice) {
-        console.log("SendInvoice WS", invoice);
         return await this.sendWsRequest('send-invoice', { invoice });
     }
 

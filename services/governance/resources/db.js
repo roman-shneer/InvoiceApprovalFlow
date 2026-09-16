@@ -1,7 +1,7 @@
 
 
 const { DaprClient } = require('@dapr/dapr');
-const daprHost = "127.0.0.1";
+const daprHost = process.env.DAPR_HTTP_HOST || "127.0.0.1";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
 
 const client = new DaprClient({
@@ -11,32 +11,28 @@ const client = new DaprClient({
 });
 
 
-async function getPendingInvoices(status = 'PENDING', limit = 1) {
+async function getPendingInvoices(status = 'PENDING', limit = 1, timeAgoMs = null) {
+    const rules = [{ EQ: { status } }];
+
+    if (timeAgoMs) {
+        rules.push({
+            GTE: { processing_date: timeAgoMs }
+        });
+    }
+
     const response = await client.state.query("mongo-invoices", {
-        filter: {
-            EQ: {
-                status: status
-            }
-        },
-        page: { limit: limit },
-        sort: [
-            {
-                key: 'created_at',
-                order: 'ASC'
-            }
-        ]
+        filter: rules.length > 1 ? { AND: rules } : rules[0],
+        page: { limit },
+        sort: [{ key: 'created_at', order: 'ASC' }]
     });
 
-    const invoices = response.results.map(item => {
-        return item.data || item.value;
-    });
-    return invoices;
+    return (response?.results || []).map(item => item.data || item.value || item);
 }
 
 
 async function getPolicies() {
     const response = await client.state.query("mongo-policies", {
-        filter: {},
+        filter: { EQ: { "is_active": true } },
         page: { limit: 100 }
     });
 
@@ -45,7 +41,10 @@ async function getPolicies() {
     });
     return activeRules;
 }
-
+async function getFxRate(currency, date) {
+    const rateKey = `${currency}_${date}`;
+    return await client.state.get("mongo-fx-rates", rateKey);
+}
 async function getFxRates() {
     const response = await client.state.query("mongo-fx-rates", {
         filter: {},
@@ -90,4 +89,4 @@ async function saveInvoiceToMongo(invoice) {
     }
 }
 
-module.exports = { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices };
+module.exports = { getPolicies, getFxRates, saveInvoiceToMongo, getPendingInvoices, getFxRate };
