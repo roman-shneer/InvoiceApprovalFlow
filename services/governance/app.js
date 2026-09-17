@@ -235,27 +235,6 @@ async function start() {
     electLeader();
 }
 
-/*
-async function saveToFile(invoice, message) {
-    const deadLetterPayload = {
-        failed_at: new Date().toISOString(),
-        error: message,
-        invoice: invoice
-    };
-
-    fs.appendFile(
-        path.join(__dirname, 'failed-invoices.jsonl'),
-        JSON.stringify(deadLetterPayload) + '\n',
-        'utf8'
-    ).then(() => {
-        console.log(`[${invoice.tracking_id || invoice.id || "unknown"}] The emergency invoice was successfully saved locally to disk.`);
-    }).catch(fsErr => {
-        console.error(`[${invoice.tracking_id || invoice.id || "unknown"}] CATASTROPHE: Even the disk is not writable!`, fsErr.message);
-    });
-}
-
-*/
-
 async function publishInvoiceNotification(pendingInvoice, topic = NOTIFICATION_PROCESSED_TOPIC) {
     if (!pendingInvoice) return;
     try {
