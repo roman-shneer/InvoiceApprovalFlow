@@ -1,16 +1,22 @@
 {
     "name": "payment-service",
     "version": "1.0.0",
-    "main": "app.js",
+    "main": "dist/app.js",
     "license": "MIT",
     "scripts": {
-        "start": "node app.js",
-        "test": "jest --passWithNoTests --roots tests"
+        "build": "tsc -p tsconfig.json",
+        "start": "node dist/app.js",
+        "test": "jest --passWithNoTests --config jest.config.cjs",
+        "test:build": "npm run build && npm test"
     },
     "dependencies": {
         "@dapr/dapr": "^3.4.0"
     },
     "devDependencies": {
-        "jest": "^30.4.2"
+        "@types/jest": "^30.0.0",
+        "@types/node": "^22.15.30",
+        "jest": "^30.4.2",
+        "ts-jest": "^29.4.12",
+        "typescript": "^5.8.3"
     }
 }
