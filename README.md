@@ -53,8 +53,6 @@ The runtime relies on dedicated Mongo-backed Dapr state stores for bounded respo
 
 🔗 Quick Links for Reviewers
 
-📺 **Platform Demonstration Video:** Watch our [2–5 Minute Screen Recording Showcase](https://youtu.be/LQWjTzlAAd4) demonstrating full cross-service event cycles and workflow execution.
-
 📂 Core Architecture Specifications: Go to [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) to inspect full component boundaries, interaction flows, sequence diagrams, and Saga rollback designs (built via Mermaid).
 
 📑 Architecture Decision Records: Go to [docs/adr/README.md](docs/adr/README.md) to track the explicit rationale, tradeoffs, and consequences behind every critical technical selection made in this stack.
