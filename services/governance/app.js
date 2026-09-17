@@ -174,23 +174,16 @@ async function reclaim() {
 }
 
 async function startServerWithRetry() {
-    const maxAttempts = Number(process.env.DAPR_START_MAX_ATTEMPTS || 30);
-    const delayMs = Number(process.env.DAPR_START_RETRY_DELAY_MS || 2000);
+    await server.start();
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const maxAttempts = 30;
+    for (let i = 1; i <= maxAttempts; i++) {
         try {
-            await server.start();
-            return;
-        } catch (err) {
-            const msg = err && err.message ? err.message : String(err);
-            const isSidecarBootRace = msg.includes('DAPR_SIDECAR_COULD_NOT_BE_STARTED');
-
-            if (!isSidecarBootRace || attempt === maxAttempts) {
-                throw err;
-            }
-
-            console.warn(`[governance-startup] Dapr sidecar not ready (attempt ${attempt}/${maxAttempts}). Retrying in ${delayMs}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delayMs));
+            await daprClient.wait(1000);
+            break;
+        } catch {
+            console.warn(`[governance-startup] Dapr sidecar not ready (attempt ${i}/${maxAttempts})`);
+            await new Promise(r => setTimeout(r, 2000));
         }
     }
 }
