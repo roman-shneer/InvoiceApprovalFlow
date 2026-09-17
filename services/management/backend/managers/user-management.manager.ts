@@ -1,3 +1,4 @@
+// @ts-nocheck
 class UserManagementManager {
     constructor(userResource, userEngine, cryptoEngine) {
         this.userResource = userResource;

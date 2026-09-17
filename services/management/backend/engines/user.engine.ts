@@ -1,3 +1,4 @@
+// @ts-nocheck
 const bcrypt = require("bcrypt");
 class UserEngine {
     constructor() {

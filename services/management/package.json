@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "jest --runInBand"
+    "start": "node dist/backend/server.js",
+    "build": "tsc -p tsconfig.json",
+    "test": "jest --config jest.config.cjs --runInBand"
   },
   "keywords": [],
   "author": "",
@@ -26,6 +28,15 @@
     "ws": "^8.14.1"
   },
   "devDependencies": {
-    "jest": "^30.4.2"
+    "@types/bcrypt": "^6.0.0",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.3",
+    "@types/jest": "^30.0.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.5",
+    "typescript": "^5.9.2"
   }
 }

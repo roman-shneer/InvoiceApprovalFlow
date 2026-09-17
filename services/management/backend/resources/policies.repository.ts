@@ -1,3 +1,4 @@
+// @ts-nocheck
 const STATE_STORE_NAME = "mongo-policies";
 
 class PoliciesRepository {

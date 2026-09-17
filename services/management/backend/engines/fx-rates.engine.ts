@@ -1,3 +1,4 @@
+// @ts-nocheck
 class FxRatesEngine {
     normalizeCode(rawCode) {
         return String(rawCode || '').trim().toUpperCase();

@@ -1,5 +1,6 @@
+// @ts-nocheck
 const bcrypt = require('bcrypt');
-const CryptoEngine = new (require('../engines/crypto.engine.js'))();
+const CryptoEngine = new (require('../engines/crypto.engine'))();
 async function UsersInit(daprClient, STATE_STORE_NAME) {
 
     const defaultUsers = {

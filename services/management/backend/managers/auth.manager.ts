@@ -1,3 +1,4 @@
+// @ts-nocheck
 class AuthManager {
     constructor(userResource, cryptoEngine) {
         this.userResource = userResource;
