@@ -34,9 +34,9 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 🚀 Key Architectural Pillars
 
 *   **Dynamic Autonomous Guardrails:** The system implements a programmatic boundary inside the Node.js Governance service linked to a live MongoDB policy database. Out of the box, it enforces strict defaults ($250 ceiling and 0.80 AI confidence requirement) while supporting runtime updates via runtime policy injection without system restarts.
-*   **Upstream Rate Limiting Guard:** To secure internal infrastructure nodes from concurrency spikes and traffic exhaustion, an **Envoy API Gateway** instance intercepts payload volumes directly at the network edge (`gateway/envoy.yaml`). The gateway applies a declarative local rate-limiting filter (`envoy.filters.http.local_ratelimit`) configured with a strict ceiling of **5 requests per second** on the `/api/v1/expenses` endpoint, gracefully propagating `429 Too Many Requests` states back to upstream clients during high-concurrency bursts.
+*   **Upstream Gateway Boundary:** An **Envoy API Gateway** instance exposes the ingestion route at the network edge (`gateway/envoy.yaml`) and forwards `/api/v1/expenses` traffic to the ingestion service. Rate limiting is not currently configured in the checked-in Envoy configuration.
 *   **100% Data Privacy (Local Ollama / Llama 3):** To protect sensitive corporate invoice data from external processing risks, all AI compliance inference is containerized entirely locally using the open-source Llama 3 model inside the Docker internal network loop.
-*   **Automated Test Matrix Verification:** The platform includes automated Jest suites for ingestion, governance, payment, distributed E2E journeys, and the management backoffice service. These tests validate stream processing, orchestration behavior, and edge-case resilience.
+*   **Automated Test Matrix Verification:** The platform includes automated Jest suites for ingestion, governance, payment, distributed E2E journeys, and the management backoffice service. These tests validate event processing, leader-based recovery behavior, and edge-case resilience.
 *   **Zero-Hardcode & Security Policies:** Real production credentials, database targets, and token pairs are entirely isolated into environment files and injected via Dapr Secrets. No plain-text access configuration is pushed to GitHub.
 *   **Distributed Tracing & Observability (OpenTelemetry + Zipkin):** Every microservice is fully instrumented using native Dapr OpenTelemetry integration. The tracing system runs on a 100% sampling rate (AlwaysOnSampler), collecting spans from Envoy Gateway, Ingestion, Pub/Sub channels, Rules Engine, and Payment Settler to construct full end-to-end trace flows visualised inside a Zipkin dashboard.
 
@@ -45,11 +45,16 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 The runtime relies on dedicated Mongo-backed Dapr state stores for bounded responsibilities:
 
 * `approval-state`: idempotency keys and duplicate protection in ingestion.
-* `mongo-state`: ingestion outbox events and sweeper retries.
 * `mongo-invoices`: canonical invoice workflow state and audit metadata.
 * `mongo-policies`: dynamic governance/autonomy policy rules.
 * `mongo-fx-rates`: runtime FX conversion map used by governance and payment.
 * `mongo-budgets`: department budget pools consumed by payment settlement.
+
+### Event Processing and Leader Election
+
+The workflow is event-driven and has no central workflow coordinator. Ingestion persists the invoice and publishes `invoice.pending`. Governance consumes that event, applies deterministic and AI-assisted policy checks, persists the decision, and publishes `invoice.payment` for approved invoices. Payment consumes that event and publishes `payment.confirmed` or `payment.failed`.
+
+Governance also performs recovery for stale processing records. Replicas use a shared `leader:reclaimer` key in the `approval-state` Dapr store with an expiration timestamp and compare-and-set writes. This is a lightweight **leader-election mechanism**: one healthy Governance replica becomes the temporary reclaim leader, while normal invoice event processing remains distributed across replicas.
 
 🔗 Quick Links for Reviewers
 
