@@ -5,7 +5,7 @@
   "license": "ISC",
   "author": "",
   "type": "commonjs",
-  "main": "app.js",
+  "main": "dist/app.js",
   "directories": {
     "test": "tests"
   },
@@ -13,7 +13,8 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch app.ts",
     "start": "node dist/app.js",
-    "test": "jest --passWithNoTests"
+    "test": "jest --passWithNoTests --config jest.config.cjs",
+    "test:build": "npm run build && npm test"
   },
   "dependencies": {
     "@dapr/dapr": "^3.18.0",
@@ -21,9 +22,12 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.15.30",
+    "@types/supertest": "^7.2.1",
     "jest": "^30.4.2",
     "supertest": "^7.2.2",
+    "ts-jest": "^29.4.12",
     "tsx": "^4.20.0",
     "typescript": "^5.8.3"
   }

@@ -11,7 +11,7 @@ const STATE_STORE_NAME = 'approval-state';
 const PUB_SUB_NAME = 'approval-pubsub';
 const MONGO_STATE_STORE = 'mongo-state';
 const MONGO_INVOICES_STORE = 'mongo-invoices';
-const NOTIFICATION_PENDING_TOPIC = 'invoice.submitted';
+const NOTIFICATION_PENDING_TOPIC = 'invoice.pending';
 
 const daprClient = new DaprClient({ daprHost: DAPR_HOST, daprPort: DAPR_PORT });
 export const app = express();

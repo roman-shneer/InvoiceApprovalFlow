@@ -7,9 +7,13 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "outDir": "./dist",
     "rootDir": "."
   },
-  "include": ["app.ts"]
+  "include": [
+    "app.ts"
+  ]
 }
