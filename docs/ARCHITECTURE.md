@@ -43,13 +43,12 @@ graph TD
         
         %% Database Connections
         Dapr1 -.->|Write PENDING State| DB[(MongoDB Replica Set: Port 27017)]
-        Dapr5 -.->|Poll & Mutate State| DB
         Dapr2 -.->|Update Audit State| DB
         Dapr3 -.->|Update Ledger State| DB
 
         %% Dapr Pub/Sub Broker abstraction
-        Dapr5 -.->|Publish: invoice.pending| PubSub{Dapr Pub/Sub Broker}
-        Dapr5 -.->|Publish: invoice.payment| PubSub
+        Dapr1 -.->|Publish: invoice.pending| PubSub{Dapr Pub/Sub Broker}
+        Dapr2 -.->|Publish: invoice.payment| PubSub
         PubSub -.->|Deliver Event| Dapr2
         PubSub -.->|Deliver Event| Dapr3
     end
@@ -62,15 +61,15 @@ graph TD
         Dapr1 -.->|OTel Spans| Zipkin[Zipkin Dashboard: Port 9411]
         Dapr2 -.->|OTel Spans| Zipkin
         Dapr3 -.->|OTel Spans| Zipkin
-        Dapr5 -.->|OTel Spans| Zipkin
+        Dapr4 -.->|OTel Spans| Zipkin
     end
 ```
 
 ### Microservice Directory
-1.  **Ingestion Service (Node.js Express):** Exposes a high-performance input boundary. It validates JSON schemas, processes incoming headers for MD5-hashed idempotency keys in Redis to short-circuit duplicates, and writes new invoices directly with status PENDING into mongo-invoices.
-2.  **Governance & AI Engine Agent (Node.js):** Listens to invoice.pending events. Evaluates deterministic hard stop constraints (currency checks, receipt requirements) and coordinates local asynchronous LLM inference cycles via Ollama. Updates evaluation results (AUTO_APPROVE, APPROVED, REJECTED) back into mongo-invoices.
-3.  **Payment Service:** Controls corporate asset movement. Listens to invoice.payment events, tracks budget allocations, simulates edge-case connectivity status triggers with mock banking endpoints, and publishes terminal events (payment.confirmed / payment.failed).
-4.  **Management Service (Node.js + Vue 3):** Administrative backoffice backplane used to re-configure runtime autonomy ceiling properties dynamically inside MongoDB.
+1.  **Ingestion Service (Node.js Express):** Exposes a high-performance input boundary. It validates the request, derives an MD5 idempotency key from `vendor`, `invoiceNumber`, and `total`, stores the invoice in `mongo-invoices`, records the duplicate guard in `approval-state`, and publishes `invoice.pending`.
+2.  **Governance & AI Engine Agent (Node.js):** Consumes `invoice.pending`, evaluates deterministic hard-stop constraints and local Ollama inference, updates `mongo-invoices`, and publishes `invoice.payment` for payment-eligible decisions. Its stale-work recovery uses Dapr state-based leader election so only one replica reclaims old processing records at a time.
+3.  **Payment Service:** Consumes `invoice.payment`, tracks department budgets and FX conversion, simulates bank failures, updates the invoice ledger state, and publishes `payment.confirmed` or `payment.failed`.
+4.  **Management Service (Node.js + Vue 3):** Provides the administrative backoffice, dynamic policy and financial configuration, invoice review actions, and event-driven UI notifications.
 
 ---
 
@@ -92,25 +91,21 @@ sequenceDiagram
 
     Client->>Envoy: POST /api/v1/expenses (Trace Context Attached)
     Envoy->>IS: Forward to Ingestion (Port 8001)
-    Note over IS: Verifies Idempotency-Key via Redis<br/>Stitches W3C Trace Context
+    Note over IS: Derives duplicate key and checks approval-state<br/>Stitches W3C Trace Context
     IS->>DB: Write invoice directly (Status: PENDING)
     IS-->>Client: 202 Accepted (Tracking ID: INV-1001)
     IS->>ZK: Export Ingestion Span
 
-    Note over OS: Dapr Cron Job Triggers (mongo-event-cron)<br/>Queries mongo-invoices (limit: 1)
-    OS->>DB: Mutate status to PROCESSING
-    OS->>GS: Dapr Pub/Sub: invoice.pending
+    IS->>GS: Dapr Pub/Sub: invoice.pending
+    GS->>DB: Mutate status to PROCESSING
 
     Note over GS: Evaluates applyOverride() -> Auto-Approve
     GS->>DB: Persist Audited Status: AUTO_APPROVE
 
-    Note over OS: Next Cron Cycle reads AUTO_APPROVE
-    OS->>DB: Mutate status to PROCESSING_PAYMENT
-    OS->>PS: Dapr Pub/Sub: invoice.payment
+    GS->>PS: Dapr Pub/Sub: invoice.payment
 
     Note over PS: Processes budget reserve<br/>Calls mock banking node -> Success
     PS->>DB: Persist Ledger Status: PAID
-    PS->>OS: Dapr Pub/Sub: payment.confirmed
     PS->>ZK: Export Payment Span
 ```
 
@@ -129,9 +124,8 @@ sequenceDiagram
     IS->>DB: Save invoice (Status: PENDING)
     IS-->>Client: 202 Accepted (Tracking ID: INV-1007)
     
-    Note over OS: Cron picks up PENDING invoice
-    OS->>DB: Lock status to PROCESSING
-    OS->>GS: Dapr Pub/Sub: invoice.pending
+    IS->>GS: Dapr Pub/Sub: invoice.pending
+    GS->>DB: Lock status to PROCESSING
     
     Note over GS: applyOverride Triggered:<br/>\$1250 exceeds AUTONOMY-CEILING (\$250).
     GS->>DB: Save to mongo-invoices (Status: HUMAN_REVIEW, triggered_rules: ["AUTONOMY-CEILING"])
@@ -142,7 +136,7 @@ sequenceDiagram
 
 ## 4. Transaction Consistency Protocol: The Payment Saga
 
-To guarantee structural ledger alignment without locking underlying distributed databases, the platform relies on an Orchestrated Saga Pattern utilizing event-driven microservices (0008-payment-saga.md).
+To guarantee structural ledger alignment without locking underlying distributed databases, the platform relies on a choreographed Saga Pattern using event-driven microservices (0008-payment-saga.md).
 
 ```mermaid
 graph TD    
@@ -165,4 +159,4 @@ graph TD
 ## 5. Defensive Coding & Idempotency Safeguards
 
 ### Inbound De-duplication (Journey INV-1003)
-Every submission payload is hashed using an MD5 encryption sequence based on vendor, `invoiceNumber`, and `total` parameters. If a subsequent request matches an active concurrency transaction key inside Redis, the Ingestion layer short-circuits execution completely, returning the original `200 OK PROCESSING` schema state without generating duplicate database records or triggering downstream orchestrator cycles.
+Every submission payload is hashed using an MD5 digest based on vendor, `invoiceNumber`, and `total` parameters. If a subsequent request matches an active key in the `approval-state` Dapr store, the Ingestion layer short-circuits execution and returns the original `200 OK PROCESSING` state without creating a duplicate invoice or publishing another `invoice.pending` event.
