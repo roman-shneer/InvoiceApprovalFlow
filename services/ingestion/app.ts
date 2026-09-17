@@ -1,7 +1,7 @@
-const express = require('express');
-const crypto = require('crypto');
-const fs = require('fs');
-const { DaprClient } = require('@dapr/dapr');
+import express, { NextFunction, Request, Response } from 'express';
+import { DaprClient } from '@dapr/dapr';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
 
 const DAPR_HOST = process.env.DAPR_HOST || 'ingestion-dapr-sidecar';
 const DAPR_PORT = process.env.DAPR_PORT || '3500';
@@ -14,16 +14,49 @@ const MONGO_INVOICES_STORE = 'mongo-invoices';
 const NOTIFICATION_PENDING_TOPIC = 'invoice.submitted';
 
 const daprClient = new DaprClient({ daprHost: DAPR_HOST, daprPort: DAPR_PORT });
-const app = express();
+export const app = express();
+
+type LogLevel = 'INFO' | 'WARN' | 'ERROR';
+
+type JwtPayload = {
+  role?: string;
+  exp?: number;
+  [key: string]: unknown;
+};
+
+type InvoicePayload = {
+  idempotency_key: string;
+  correlation_id: string;
+  submitted_at: string;
+  tracking_id: string;
+  submitter: string;
+  department: string;
+  vendor: string;
+  vendorKnown: boolean;
+  invoiceNumber: string;
+  currency: string;
+  category: string;
+  attendees: number;
+  lineItems: unknown[];
+  taxAmount: number;
+  total: number;
+  receiptPresent: boolean;
+  date: string;
+  notes: string;
+  scenario: string;
+  expected: unknown;
+  note: unknown;
+  status: string;
+};
 
 app.use(express.json());
-app.use((req, res, next) => {
+app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
   next();
 });
 
-function logMessage(level, correlationId, message) {
+function logMessage(level: LogLevel, correlationId: string, message: string): void {
   const log = {
     timestamp: new Date().toISOString(),
     level,
@@ -42,7 +75,7 @@ function logMessage(level, correlationId, message) {
   });
 }
 
-function decodeJwtPayload(token) {
+function decodeJwtPayload(token?: string): JwtPayload | null {
   if (!token) {
     return null;
   }
@@ -56,34 +89,39 @@ function decodeJwtPayload(token) {
     const base64Url = parts[1];
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
     const jsonPayload = Buffer.from(base64, 'base64').toString('utf8');
-    return JSON.parse(jsonPayload);
+    return JSON.parse(jsonPayload) as JwtPayload;
   } catch (err) {
-    const message = err && err.message ? err.message : 'Unknown JWT decode error';
+    const message = err instanceof Error ? err.message : 'Unknown JWT decode error';
     console.error('[JWT Error] Failed to decode token payload:', message);
     return null;
   }
 }
 
-async function saveInvoiceToMongo(invoice) {
+async function saveInvoiceToMongo(invoice: Record<string, unknown>): Promise<void> {
   const pendingInvoice = {
     ...invoice,
     createdAt: new Date().toISOString(),
   };
 
   try {
+    const trackingId = String((invoice as Record<string, unknown>).tracking_id ?? 'unknown');
+    const correlationId = String((invoice as Record<string, unknown>).correlation_id ?? 'unknown');
+
     await daprClient.state.save(MONGO_INVOICES_STORE, [
       {
-        key: String(pendingInvoice.tracking_id),
+        key: trackingId,
         value: pendingInvoice,
       },
     ]);
   } catch (dbErr) {
-    const message = dbErr && dbErr.message ? dbErr.message : 'Unknown database error';
-    console.log(`[${String(invoice.tracking_id)}] ERROR: ${String(invoice.correlation_id)}: Failed to save audit record in MongoDB: ${message}`);
+    const message = dbErr instanceof Error ? dbErr.message : 'Unknown database error';
+    const trackingId = String((invoice as Record<string, unknown>).tracking_id ?? 'unknown');
+    const correlationId = String((invoice as Record<string, unknown>).correlation_id ?? 'unknown');
+    console.log(`[${trackingId}] ERROR: ${correlationId}: Failed to save audit record in MongoDB: ${message}`);
   }
 }
 
-async function publishInvoiceNotification(pendingInvoice, topic = NOTIFICATION_PENDING_TOPIC) {
+async function publishInvoiceNotification(pendingInvoice: Record<string, unknown>, topic = NOTIFICATION_PENDING_TOPIC): Promise<void> {
   if (!pendingInvoice) {
     return;
   }
@@ -91,12 +129,12 @@ async function publishInvoiceNotification(pendingInvoice, topic = NOTIFICATION_P
   try {
     await daprClient.pubsub.publish(PUB_SUB_NAME, topic, pendingInvoice);
   } catch (err) {
-    const message = err && err.message ? err.message : 'Unknown publish error';
+    const message = err instanceof Error ? err.message : 'Unknown publish error';
     console.error(`[${String(pendingInvoice.tracking_id)}] Failed to publish invoice processed notification:`, message);
   }
 }
 
-async function saveOutboxEvent(eventPayload) {
+async function saveOutboxEvent(eventPayload: InvoicePayload): Promise<{ key: string; value: Record<string, unknown> }> {
   const outboxKey = `outbox_${eventPayload.idempotency_key}`;
   const outboxValue = {
     pubsub_name: PUB_SUB_NAME,
@@ -108,10 +146,11 @@ async function saveOutboxEvent(eventPayload) {
   };
 
   await daprClient.state.save(MONGO_STATE_STORE, [{ key: outboxKey, value: outboxValue }]);
+
   return { key: outboxKey, value: outboxValue };
 }
 
-async function markOutboxProcessed(outboxKey, outboxValue) {
+async function markOutboxProcessed(outboxKey: string, outboxValue: Record<string, unknown>): Promise<void> {
   await daprClient.state.save(MONGO_STATE_STORE, [
     {
       key: outboxKey,
@@ -126,20 +165,19 @@ async function markOutboxProcessed(outboxKey, outboxValue) {
 
 logMessage('INFO', '0', 'Ingestion service bootstrap complete. Listening for incoming traffic.');
 
-app.post('/api/v1/expenses', async (req, res) => {
+app.post('/api/v1/expenses', async (req: Request, res: Response) => {
   const correlationId = String(req.headers['x-correlation-id'] || `corr_${crypto.randomUUID()}`);
   logMessage('INFO', correlationId, 'Received raw invoice submission request.');
 
   const authHeader = req.headers['authorization'];
-  let userPayload = null;
+  let userPayload: JwtPayload | null = null;
   if (authHeader) {
-    let token = null;
+    let token: string | null = null;
 
     if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
       token = authHeader.split(' ')[1] ?? null;
     }
-
-    userPayload = decodeJwtPayload(token || undefined);
+    userPayload = decodeJwtPayload(token ?? undefined);
   }
 
   if (!authHeader || !userPayload || userPayload.role !== 'submitter' || !userPayload.exp) {
@@ -155,7 +193,7 @@ app.post('/api/v1/expenses', async (req, res) => {
 
   logMessage('INFO', correlationId, 'Token is valid.');
 
-  const body = req.body;
+  const body = req.body as Record<string, unknown> | undefined;
 
   if (!body || !body.id) {
     logMessage('WARN', correlationId, 'Rejected due to invalid JSON schema.');
@@ -170,7 +208,7 @@ app.post('/api/v1/expenses', async (req, res) => {
   const idempotencyKey = crypto.createHash('md5').update(hashString).digest('hex');
 
   try {
-    const existingState = await daprClient.state.get(STATE_STORE_NAME, idempotencyKey);
+    const existingState = (await daprClient.state.get(STATE_STORE_NAME, idempotencyKey)) as Record<string, unknown> | null;
 
     if (existingState && Object.keys(existingState).length > 0) {
       const trackingId = String(existingState.tracking_id ?? body.id);
@@ -186,7 +224,7 @@ app.post('/api/v1/expenses', async (req, res) => {
     const trackingId = String(body.id);
     const category = String(body.category ?? 'General');
 
-    const eventPayload = {
+    const eventPayload: InvoicePayload = {
       idempotency_key: idempotencyKey,
       correlation_id: correlationId,
       submitted_at: new Date().toISOString(),
@@ -238,15 +276,15 @@ app.post('/api/v1/expenses', async (req, res) => {
       message: 'Invoice submitted successfully and queued for processing.',
     });
   } catch (error) {
-    const message = error && error.message ? error.message : 'Unknown processing error';
+    const message = error instanceof Error ? error.message : 'Unknown processing error';
     logMessage('ERROR', correlationId, `Critical failure in ingestion processing: ${message}`);
-    const statusCode = error && typeof error === 'object' && 'status' in error ? Number(error.status ?? 500) : 500;
+    const statusCode = typeof error === 'object' && error && 'status' in error ? Number((error as { status?: number }).status ?? 500) : 500;
     const errorMessage = statusCode === 500 ? 'Internal Server Error' : message;
     return res.status(statusCode).json({ error: errorMessage });
   }
 });
 
-app.use((req, res) => {
+app.use((req: Request, res: Response) => {
   res.status(404).json({ error: 'Not Found' });
 });
 
@@ -259,3 +297,4 @@ if (process.env.NODE_ENV !== 'test') {
   });
 }
 
+export default app;
