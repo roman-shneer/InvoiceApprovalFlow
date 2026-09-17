@@ -1,4 +1,4 @@
-
+// @ts-nocheck
 const STATE_STORE_NAME = "mongo-users";
 const crypto = require('crypto');
 

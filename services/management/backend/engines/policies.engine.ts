@@ -1,3 +1,4 @@
+// @ts-nocheck
 class PoliciesEngine {
     isValidPolicy(policy) {
         if (!policy.rule_id || typeof policy.rule_id !== 'string') return false;

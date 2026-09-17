@@ -1,3 +1,4 @@
+// @ts-nocheck
 class InvoiceManager {
     constructor(resource) {
         this.resource = resource;

@@ -1,3 +1,4 @@
+// @ts-nocheck
 class InvoiceController {
     constructor(manager, websocketBroadcast) {
         this.manager = manager;

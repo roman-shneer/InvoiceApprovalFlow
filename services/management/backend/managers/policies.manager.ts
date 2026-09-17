@@ -1,3 +1,4 @@
+// @ts-nocheck
 class PoliciesManager {
     constructor(resource, engine) {
         this.resource = resource;

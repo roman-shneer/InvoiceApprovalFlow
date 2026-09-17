@@ -1,3 +1,4 @@
+// @ts-nocheck
 class BudgetsEngine {
     normalizeDepartment(rawDepartment) {
         return String(rawDepartment || '').trim();

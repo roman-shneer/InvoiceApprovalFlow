@@ -1,3 +1,4 @@
+// @ts-nocheck
 require('dotenv').config();
 const http = require('http');
 const express = require('express');
@@ -20,24 +21,24 @@ const MONGO_USERS = "mongo-users";
 const MONGO_FX_RATES = "mongo-fx-rates";
 const MONGO_BUDGETS = "mongo-budgets";
 
-const UsersInit = require('./resources/users.init.js');
+const UsersInit = require('./resources/users.init');
 
 
 async function start() {
-    const UserRepository = require('./resources/user.repository.js');
+    const UserRepository = require('./resources/user.repository');
 
-    const CryptoEngine = require('./engines/crypto.engine.js');
-    const UserEngine = require('./engines/user.engine.js');
+    const CryptoEngine = require('./engines/crypto.engine');
+    const UserEngine = require('./engines/user.engine');
 
-    const AuthManager = require('./managers/auth.manager.js');
-    const UserManagementManager = require('./managers/user-management.manager.js');
+    const AuthManager = require('./managers/auth.manager');
+    const UserManagementManager = require('./managers/user-management.manager');
 
-    const PoliciesRepository = require('./resources/policies.repository.js');
-    const PoliciesEngine = require('./engines/policies.engine.js');
-    const PoliciesManager = require('./managers/policies.manager.js');
-    const FxRatesEngine = require('./engines/fx-rates.engine.js');
+    const PoliciesRepository = require('./resources/policies.repository');
+    const PoliciesEngine = require('./engines/policies.engine');
+    const PoliciesManager = require('./managers/policies.manager');
+    const FxRatesEngine = require('./engines/fx-rates.engine');
     const fxRatesEngine = new FxRatesEngine();
-    const BudgetsEngine = require('./engines/budgets.engine.js');
+    const BudgetsEngine = require('./engines/budgets.engine');
     const budgetsEngine = new BudgetsEngine();
 
 
@@ -220,8 +221,8 @@ async function start() {
     const server = http.createServer(app);
     const wss = new WebSocket.Server({ server, path: '/ws' });
 
-    const InvoiceManager = require('./managers/invoice.manager.js');
-    const InvoicesRepository = require('./resources/invoices.repository.js');
+    const InvoiceManager = require('./managers/invoice.manager');
+    const InvoicesRepository = require('./resources/invoices.repository');
     const invoicesRepository = new InvoicesRepository(daprClient);
     const invoiceManager = new InvoiceManager(invoicesRepository);
 
