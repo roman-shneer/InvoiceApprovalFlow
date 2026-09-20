@@ -5,9 +5,11 @@ const mockStateSave = jest.fn();
 const mockPubSubPublish = jest.fn();
 
 jest.mock('@dapr/dapr', () => ({
+  ActorId: class ActorId { constructor(public readonly id: string) { } },
   DaprClient: jest.fn().mockImplementation(() => ({
     state: { get: mockStateGet, save: mockStateSave, query: jest.fn().mockResolvedValue({ results: [] }), delete: jest.fn().mockResolvedValue(true) },
     pubsub: { publish: mockPubSubPublish.mockResolvedValue(true) },
+    actor: { actor: { invoke: jest.fn().mockResolvedValue({ success: true }) } },
   })),
 }));
 

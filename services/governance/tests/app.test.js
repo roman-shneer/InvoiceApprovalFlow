@@ -17,6 +17,7 @@ jest.mock('../managers/aiManager', () => ({
 const flushPromises = () => new Promise(setImmediate);
 
 jest.mock('@dapr/dapr', () => ({
+    AbstractActor: class AbstractActor { },
     DaprClient: jest.fn().mockImplementation(() => ({
         state: {
             save: mockStateSave,
@@ -27,6 +28,10 @@ jest.mock('@dapr/dapr', () => ({
         }
     })),
     DaprServer: jest.fn().mockImplementation(() => ({
+        actor: {
+            init: jest.fn().mockResolvedValue(true),
+            registerActor: jest.fn().mockResolvedValue(true)
+        },
         pubsub: {
             subscribe: mockSubscribe
         },
@@ -83,7 +88,7 @@ describe('D5: One-command verification (Four journeys + Anti-cheese guards)', ()
         startFn = require('../app').start;
     });
 
-    test('Journey 1: accepts invoice.submitted event and route to AUTO_APPROVE', async () => {
+    test('Journey 1: accepts invoice.pending event and route to AUTO_APPROVE', async () => {
         const savedInvoiceCalls = [];
 
         dbMock.saveInvoiceToMongo.mockImplementation(async (invoice) => {
@@ -116,7 +121,7 @@ describe('D5: One-command verification (Four journeys + Anti-cheese guards)', ()
             currency: 'USD'
         };
 
-        const result = await targetCallbacks['invoice.submitted']({ data: fakeInvoice });
+        const result = await targetCallbacks['invoice.pending']({ data: fakeInvoice });
         expect(result).toBe('SUCCESS');
 
         await flushPromises();
@@ -171,8 +176,8 @@ describe('D5: One-command verification (Four journeys + Anti-cheese guards)', ()
         });
 
         mockPubSubPublish.mockImplementation(async (pubsubName, topic, messagePayload) => {
-            if (topic === 'invoice.submitted') {
-                await targetCallbacks['invoice.submitted']({ data: messagePayload });
+            if (topic === 'invoice.pending') {
+                await targetCallbacks['invoice.pending']({ data: messagePayload });
             }
             return true;
         });
@@ -181,7 +186,7 @@ describe('D5: One-command verification (Four journeys + Anti-cheese guards)', ()
 
         const appInvoices = await dbMock.getPendingInvoices('PROCESSING', 1000);
         for (const invoice of appInvoices) {
-            await mockPubSubPublish('approval-pubsub', 'invoice.submitted', invoice);
+            await mockPubSubPublish('approval-pubsub', 'invoice.pending', invoice);
         }
 
         await flushPromises();
@@ -226,7 +231,7 @@ describe('D5: One-command verification (Four journeys + Anti-cheese guards)', ()
         await startFn();
 
         const fakeInvoice = { tracking_id: 'INV-J3', total: '25.00', currency: 'USD' };
-        await targetCallbacks['invoice.submitted']({ data: fakeInvoice });
+        await targetCallbacks['invoice.pending']({ data: fakeInvoice });
         await flushPromises();
 
 
@@ -238,7 +243,7 @@ describe('D5: One-command verification (Four journeys + Anti-cheese guards)', ()
         await startFn();
 
         const fakeInvoice = { tracking_id: 'INV-J4', total: '15.00', currency: 'USD' };
-        await targetCallbacks['invoice.submitted']({ data: fakeInvoice });
+        await targetCallbacks['invoice.pending']({ data: fakeInvoice });
         await flushPromises();
 
         expect(mockPubSubPublish).toHaveBeenCalledWith(

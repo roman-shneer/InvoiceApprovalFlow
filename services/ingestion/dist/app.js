@@ -67,7 +67,6 @@ async function saveInvoiceToMongo(invoice) {
     };
     try {
         const trackingId = String(invoice.tracking_id ?? 'unknown');
-        const correlationId = String(invoice.correlation_id ?? 'unknown');
         await daprClient.state.save(MONGO_INVOICES_STORE, [
             {
                 key: trackingId,
@@ -118,6 +117,19 @@ async function markOutboxProcessed(outboxKey, outboxValue) {
             },
         },
     ]);
+}
+async function registerActorReminder(idempotencyKey, eventPayload) {
+    try {
+        const actorId = new dapr_1.ActorId(idempotencyKey);
+        // Governance owns InvoiceActor; Dapr routes this invocation to that actor service.
+        const actorClient = daprClient.actor.actor;
+        await actorClient.invoke('InvoiceActor', actorId, 'startProcessingTimer', eventPayload);
+        logMessage('INFO', eventPayload.correlation_id, `Successfully registered actor reminder for key ${idempotencyKey}`);
+    }
+    catch (actorErr) {
+        const msg = actorErr instanceof Error ? actorErr.message : 'Unknown actor error';
+        logMessage('ERROR', eventPayload.correlation_id, `Failed to register actor reminder: ${msg}`);
+    }
 }
 logMessage('INFO', '0', 'Ingestion service bootstrap complete. Listening for incoming traffic.');
 exports.app.post('/api/v1/expenses', async (req, res) => {
@@ -189,6 +201,10 @@ exports.app.post('/api/v1/expenses', async (req, res) => {
             note: body.note ?? null,
             status: 'PENDING',
         };
+        registerActorReminder(idempotencyKey, eventPayload).catch((err) => {
+            const message = err instanceof Error ? err.message : 'Unknown actor registration error';
+            logMessage('ERROR', correlationId, `Failed to register actor reminder for idempotency key ${idempotencyKey}: ${message}`);
+        });
         await daprClient.state.save(STATE_STORE_NAME, [
             {
                 key: idempotencyKey,
@@ -196,9 +212,9 @@ exports.app.post('/api/v1/expenses', async (req, res) => {
                     tracking_id: trackingId,
                     correlation_id: correlationId,
                     status: 'PROCESSING',
+                    lockedAt: new Date().getTime(),
                     payload: eventPayload,
                     lockedBy: process.env.HOSTNAME,
-                    lockedAt: new Date().toISOString(),
                     createdAt: new Date().toISOString(),
                 },
             },

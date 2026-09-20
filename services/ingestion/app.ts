@@ -1,5 +1,5 @@
 import express, { NextFunction, Request, Response } from 'express';
-import { DaprClient, ActorId, ActorProxyBuilder } from '@dapr/dapr';
+import { DaprClient, ActorId } from '@dapr/dapr';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 
@@ -162,42 +162,23 @@ async function markOutboxProcessed(outboxKey: string, outboxValue: Record<string
   ]);
 }
 
-class InvoiceActor { }
-
-async function registerActorTimer(idempotencyKey: string, eventPayload: InvoicePayload) {
+async function registerActorReminder(idempotencyKey: string, eventPayload: InvoicePayload): Promise<void> {
   try {
     const actorId = new ActorId(idempotencyKey);
+    // Governance owns InvoiceActor; Dapr routes this invocation to that actor service.
+    const actorClient = (daprClient.actor as unknown as {
+      actor: {
+        invoke: (actorType: string, id: ActorId, method: string, body: InvoicePayload) => Promise<unknown>;
+      };
+    }).actor;
+    await actorClient.invoke('InvoiceActor', actorId, 'startProcessingTimer', eventPayload);
 
-    // 2. Передаем наш класс-заглушку в билдер. 
-    // Билдер автоматически считает имя "InvoiceActor" и не упадет в рантайме!
-    const builder = new ActorProxyBuilder<any>(InvoiceActor, daprClient);
-    const actorProxy = builder.build(actorId);
-
-    // 3. Вызываем кастомный метод, приводя прокси к типу any
-    await actorProxy.startProcessingTimer(eventPayload);
-
-    logMessage('INFO', eventPayload.correlation_id, `Successfully registered actor timer for key ${idempotencyKey}`);
+    logMessage('INFO', eventPayload.correlation_id, `Successfully registered actor reminder for key ${idempotencyKey}`);
   } catch (actorErr) {
     const msg = actorErr instanceof Error ? actorErr.message : 'Unknown actor error';
-    logMessage('ERROR', eventPayload.correlation_id, `Failed to register actor: ${msg}`);
+    logMessage('ERROR', eventPayload.correlation_id, `Failed to register actor reminder: ${msg}`);
   }
 }
-
-/*
-async function registerActor(idempotencyKey: string, eventPayload: InvoicePayload): Promise<void> {
-  const actorId = new ActorId(idempotencyKey);
-  const builder = new ActorProxyBuilder("InvoiceActor" as any, daprClient);
-  
-  //const actorProxy = builder.build(actorId);
-  //await (actorProxy as any).startProcessingTimer(eventPayload);
-  await daprClient.actor.invokeActorMethod(
-    'InvoiceActor',
-    actorId,
-    'startProcessingTimer',
-    eventPayload
-  );
-
-}*/
 
 logMessage('INFO', '0', 'Ingestion service bootstrap complete. Listening for incoming traffic.');
 
@@ -285,9 +266,9 @@ app.post('/api/v1/expenses', async (req: Request, res: Response) => {
       status: 'PENDING',
     };
 
-    registerActorTimer(idempotencyKey, eventPayload).catch((err) => {
+    registerActorReminder(idempotencyKey, eventPayload).catch((err) => {
       const message = err instanceof Error ? err.message : 'Unknown actor registration error';
-      logMessage('ERROR', correlationId, `Failed to register actor for idempotency key ${idempotencyKey}: ${message}`);
+      logMessage('ERROR', correlationId, `Failed to register actor reminder for idempotency key ${idempotencyKey}: ${message}`);
     });
 
     await daprClient.state.save(STATE_STORE_NAME, [
