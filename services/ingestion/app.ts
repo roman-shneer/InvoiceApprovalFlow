@@ -1,5 +1,5 @@
 import express, { NextFunction, Request, Response } from 'express';
-import { DaprClient } from '@dapr/dapr';
+import { DaprClient, ActorId, ActorProxyBuilder } from '@dapr/dapr';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 
@@ -11,6 +11,7 @@ const STATE_STORE_NAME = 'approval-state';
 const PUB_SUB_NAME = 'approval-pubsub';
 const MONGO_STATE_STORE = 'mongo-state';
 const MONGO_INVOICES_STORE = 'mongo-invoices';
+
 const NOTIFICATION_PENDING_TOPIC = 'invoice.pending';
 
 const daprClient = new DaprClient({ daprHost: DAPR_HOST, daprPort: DAPR_PORT });
@@ -105,8 +106,6 @@ async function saveInvoiceToMongo(invoice: Record<string, unknown>): Promise<voi
 
   try {
     const trackingId = String((invoice as Record<string, unknown>).tracking_id ?? 'unknown');
-    const correlationId = String((invoice as Record<string, unknown>).correlation_id ?? 'unknown');
-
     await daprClient.state.save(MONGO_INVOICES_STORE, [
       {
         key: trackingId,
@@ -162,6 +161,43 @@ async function markOutboxProcessed(outboxKey: string, outboxValue: Record<string
     },
   ]);
 }
+
+class InvoiceActor { }
+
+async function registerActorTimer(idempotencyKey: string, eventPayload: InvoicePayload) {
+  try {
+    const actorId = new ActorId(idempotencyKey);
+
+    // 2. Передаем наш класс-заглушку в билдер. 
+    // Билдер автоматически считает имя "InvoiceActor" и не упадет в рантайме!
+    const builder = new ActorProxyBuilder<any>(InvoiceActor, daprClient);
+    const actorProxy = builder.build(actorId);
+
+    // 3. Вызываем кастомный метод, приводя прокси к типу any
+    await actorProxy.startProcessingTimer(eventPayload);
+
+    logMessage('INFO', eventPayload.correlation_id, `Successfully registered actor timer for key ${idempotencyKey}`);
+  } catch (actorErr) {
+    const msg = actorErr instanceof Error ? actorErr.message : 'Unknown actor error';
+    logMessage('ERROR', eventPayload.correlation_id, `Failed to register actor: ${msg}`);
+  }
+}
+
+/*
+async function registerActor(idempotencyKey: string, eventPayload: InvoicePayload): Promise<void> {
+  const actorId = new ActorId(idempotencyKey);
+  const builder = new ActorProxyBuilder("InvoiceActor" as any, daprClient);
+  
+  //const actorProxy = builder.build(actorId);
+  //await (actorProxy as any).startProcessingTimer(eventPayload);
+  await daprClient.actor.invokeActorMethod(
+    'InvoiceActor',
+    actorId,
+    'startProcessingTimer',
+    eventPayload
+  );
+
+}*/
 
 logMessage('INFO', '0', 'Ingestion service bootstrap complete. Listening for incoming traffic.');
 
@@ -249,6 +285,11 @@ app.post('/api/v1/expenses', async (req: Request, res: Response) => {
       status: 'PENDING',
     };
 
+    registerActorTimer(idempotencyKey, eventPayload).catch((err) => {
+      const message = err instanceof Error ? err.message : 'Unknown actor registration error';
+      logMessage('ERROR', correlationId, `Failed to register actor for idempotency key ${idempotencyKey}: ${message}`);
+    });
+
     await daprClient.state.save(STATE_STORE_NAME, [
       {
         key: idempotencyKey,
@@ -256,9 +297,9 @@ app.post('/api/v1/expenses', async (req: Request, res: Response) => {
           tracking_id: trackingId,
           correlation_id: correlationId,
           status: 'PROCESSING',
+          lockedAt: new Date().getTime(),
           payload: eventPayload,
           lockedBy: process.env.HOSTNAME,
-          lockedAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
         },
       },

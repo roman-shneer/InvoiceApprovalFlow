@@ -1,32 +1,28 @@
-const express = require('express');
-const { DaprServer, DaprClient } = require('@dapr/dapr');
+const { DaprServer, DaprClient, ActorId, ActorProxyBuilder } = require('@dapr/dapr');
+const { InvoiceActor } = require('./engines/InvoiceActor');
 const { aiManager, anonymizeInvoice } = require('./managers/aiManager');
 const { applyOverride } = require('./engines/applyOverride');
 const { evaluateInvoiceWithAI } = require('./engines/evaluateInvoiceWithAI');
 const { getPolicies, saveInvoiceToMongo, getPendingInvoices, getFxRate } = require('./resources/db');
+
 const { RagEngine } = require('./resources/ragEngine');
 const ragEngine = new RagEngine();
-const appPort = process.env.APP_PORT || "8002";
-const daprHost = process.env.DAPR_HOST || "127.0.0.1";
-const daprPort = process.env.DAPR_HTTP_PORT || "3500";
+
 
 
 const PUB_SUB_NAME = "approval-pubsub";
-
-
 const NOTIFICATION_PENDING_TOPIC = 'invoice.pending';
 const NOTIFICATION_PROCESSED_TOPIC = "invoice.processed";
 const NOTIFICATION_REVIEW_TOPIC = "invoice.review";
 const NOTIFICATION_PAYMENT_TOPIC = "invoice.payment";
 //dapr init
-const daprClient = new DaprClient({
-    daprHost: daprHost,
-    daprPort: daprPort,
-    communicationTimeoutMs: 300000
-});
+const appPort = process.env.APP_PORT || "8002";
+const daprHost = process.env.DAPR_HOST || "127.0.0.1";
+const daprPort = process.env.DAPR_HTTP_PORT || "3500";
+
+const daprClient = new DaprClient({ daprHost, daprPort, communicationTimeoutMs: 30000 });
 
 const server = new DaprServer({
-    serverHost: "0.0.0.0",
     serverPort: appPort,
     client: daprClient
 });
@@ -34,41 +30,45 @@ const server = new DaprServer({
 
 
 const POD_NAME = process.env.HOSTNAME || 'pod-1';
-const STATE_STORE = 'approval-state';
-const LEADER_KEY = 'leader:reclaimer';
 
-let isLeader = false;
-
-// 1. Try to become leader via Dapr State only - no Redis
-async function electLeader() {
+async function actorStopTimer(idempotency_key) {
+    if (!idempotency_key) return;
     try {
-        const [entry] = await daprClient.state.getBulk(STATE_STORE, [LEADER_KEY]);
+        const actorId = new ActorId(idempotency_key);
+        const builder = new ActorProxyBuilder(InvoiceActor, daprClient);
+        const actorProxy = builder.build(actorId);
+        await actorProxy.stopTimer();
 
-        if (!entry?.data || Date.now() - entry.data.ts > 30000) {
-            // no leader or expired - try to take it
-            await daprClient.state.save(STATE_STORE, [{
-                key: LEADER_KEY,
-                value: { pod: POD_NAME, ts: Date.now() },
-                etag: entry?.etag,
-                options: entry?.data ? undefined : { concurrency: 'first-write' }
-            }]);
-            if (!isLeader) console.log(`[${POD_NAME}] I'm LEADER now`);
-            isLeader = true;
-        } else if (entry.data.pod === POD_NAME) {
-            // renew my leadership
-            await daprClient.state.save(STATE_STORE, [{
-                key: LEADER_KEY,
-                value: { pod: POD_NAME, ts: Date.now() },
-                etag: entry.etag
-            }]);
-            isLeader = true;
-        } else {
-            isLeader = false;
-        }
-    } catch {
-        isLeader = false;
+        console.log(`[${POD_NAME}] Successfully invoked stop timer for actor: ${idempotency_key}`);
+    } catch (err) {
+        console.error(`[${POD_NAME}] Failed to invoke stop timer for actor ${idempotency_key}:`, err.message);
     }
 }
+/* TODO delete
+async function reconcileStuckInvoicesOnBoot() {
+    // 1. Делаем быстрый точечный запрос в вашу MongoDB (db.js)
+    // Ищем только те инвойсы, которые зависли в 'PROCESSING'
+    const stuckInvoices = await getPendingInvoices(); // Или ваш метод поиска по статусу PROCESSING
+
+    if (!stuckInvoices || stuckInvoices.length === 0) return;
+
+    console.log(`[Boot] Found ${stuckInvoices.length} stuck invoices in PROCESSING status. Restoring timers...`);
+
+    for (const invoice of stuckInvoices) {
+        try {
+            const actorId = new ActorId(invoice.idempotency_key);
+            const builder = new ActorProxyBuilder(InvoiceActor, daprClient);
+            const actorProxy = builder.build(actorId);
+
+            // Запускаем таймер заново! Если будильник в Scheduler уже был — Dapr просто обновит его.
+            // Если сгорел — создаст заново.
+            await actorProxy.startProcessingTimer(invoice);
+            console.log(`[Boot] Successfully restored actor safety timer for invoice: ${invoice.tracking_id}`);
+        } catch (err) {
+            console.error(`[Boot] Failed to restore timer for ${invoice.tracking_id}:`, err.message);
+        }
+    }
+}*/
 console.log("POD_NAME:", POD_NAME);
 
 
@@ -85,9 +85,7 @@ async function resolveFxRate(invoice) {
 }
 async function processInvoice(trackingId, invoice) {
     const correlationId = invoice.correlation_id || "unknown";
-    // Initialize empty buckets to accumulate ALL audit findings across the matrix boundaries
-    let allTriggeredRules = [];
-    let allReasons = [];
+    // Initialize empty buckets to accumulate ALL audit findings across the matrix boundaries    
     console.log(`[${trackingId}] Processing`);
     invoice.status = 'PROCESSING';
     await saveInvoiceToMongo(invoice);
@@ -112,17 +110,14 @@ async function processInvoice(trackingId, invoice) {
         invoice.audit_metadata = applyOverride(aiResult, invoice, activeRules, rate);
 
         invoice.status = invoice.audit_metadata.recommendation;
-        const aiApproved = invoice.status === 'AUTO_APPROVE';
+
 
 
         await saveInvoiceToMongo(invoice);
         await publishInvoiceNotification(invoice, NOTIFICATION_PAYMENT_TOPIC);
-        //mark as done in state store to prevent reprocessing
-        await daprClient.state.save(STATE_STORE_NAME, [{
-            key: invoice.idempotency_key,
-            value: { tracking_id: trackingId, correlation_id: correlationId, status: 'DONE' },
-            metadata: { ttlInSeconds: '86400' }
-        }]);
+        await actorStopTimer(invoice.idempotency_key);
+
+
     } catch (error) {
         console.error(`[${trackingId}] Critical failure inside background worker:`, error.message);
         try {
@@ -134,58 +129,13 @@ async function processInvoice(trackingId, invoice) {
                 confidence: 0
             };
             await saveInvoiceToMongo(invoice);
+            await actorStopTimer(invoice.idempotency_key);
             await publishInvoiceNotification(invoice, NOTIFICATION_REVIEW_TOPIC);
         } catch (persistErr) {
             console.error(`[${trackingId}] Failed to persist fallback HUMAN_REVIEW state:`, persistErr.message);
         }
     }
 
-}
-
-async function reclaim() {
-    const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-
-    const result = await daprClient.state.query(STATE_STORE_NAME, {
-        filter: {
-            AND: [
-                { EQ: { status: 'PROCESSING' } },
-                { LT: { lockedAt: cutoff } }
-            ]
-        },
-        page: { limit: 20 }
-    });
-
-    for (const item of result.results) {
-        try {
-            await daprClient.state.save(STATE_STORE_NAME, [{
-                key: item.key,
-                value: { ...item.data, lockedBy: process.env.HOSTNAME, lockedAt: new Date().toISOString() },
-                etag: item.etag,
-                options: { concurrency: 'first-write' }
-            }]);
-
-            console.log(`Reposting stucked ${item.key}`);
-            await daprClient.pubsub.publish("approval-pubsub", "invoice-pending", item.data.payload);
-
-        } catch (e) {
-            continue;
-        }
-    }
-}
-
-async function startServerWithRetry() {
-    await server.start();
-
-    const maxAttempts = 30;
-    for (let i = 1; i <= maxAttempts; i++) {
-        try {
-            await daprClient.wait(1000);
-            break;
-        } catch {
-            console.warn(`[governance-startup] Dapr sidecar not ready (attempt ${i}/${maxAttempts})`);
-            await new Promise(r => setTimeout(r, 2000));
-        }
-    }
 }
 
 const queue = [];
@@ -200,33 +150,30 @@ async function processQueue() {
         await processInvoice(trackingId, invoice);
     } finally {
         isProcessing = false;
-        processQueue(); // берем следующий
+        processQueue();
     }
 }
-
 async function start() {
+    await server.actor.init();
+    await server.actor.registerActor(InvoiceActor);
+
     await server.pubsub.subscribe(
         PUB_SUB_NAME,
-        NOTIFICATION_PENDING_TOPIC, // 'invoice.pending'
+        NOTIFICATION_PENDING_TOPIC,
         async (eventData) => {
-            const invoice = eventData && eventData.data ? eventData.data : eventData;
+            const invoice = eventData?.data ? eventData.data : eventData;
             const trackingId = invoice.tracking_id || invoice.id;
-
-            console.log(`[${trackingId}] Queued. Queue size: ${queue.length + 1}`);
             queue.push({ trackingId, invoice });
             processQueue();
-
             return "SUCCESS";
         },
         undefined,
         { concurrency: "1" }
     );
-
-    await startServerWithRetry();
-    setInterval(electLeader, 10000);
-    setInterval(reclaim, 2 * 60 * 1000); // every 2 min, only leader will actually run
-    electLeader();
+    await server.start();
+    console.log(`[governance] Listening on ${appPort}`)
 }
+
 
 async function publishInvoiceNotification(pendingInvoice, topic = NOTIFICATION_PROCESSED_TOPIC) {
     if (!pendingInvoice) return;

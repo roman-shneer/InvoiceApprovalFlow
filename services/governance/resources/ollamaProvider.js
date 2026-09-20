@@ -4,6 +4,7 @@ class ollamaProvider {
     modelName = process.env.AI_MODEL_NAME || 'llama3';
     constructor() {
         const API_URL = process.env.OLLAMA_API_URL || 'http://127.0.0.1:11434';
+        console.log(`[ollamaProvider] Using Ollama API URL: ${API_URL}`);
         this.aiEngine = new Ollama({ host: API_URL });;
     }
 
@@ -201,7 +202,7 @@ Confidence: 1.0 if all inputs present, 0.5 if any input missing.`;
     async requestOllama(trackingId, prompt, modelName) {
         try {
             const response = await this.aiEngine.chat({
-                model: this.modelName,
+                model: modelName,
                 messages: [
                     {
                         role: 'user',
