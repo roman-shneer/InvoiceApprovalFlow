@@ -70,10 +70,8 @@ services:
   dapr-placement:
     image: "ghcr.io/dapr/placement:1.15.4"
     command: [ "/placement", "-port", "50005" ]
-    ports:
-      - "50005:50005"
-    networks:
-      - approval-flow-net
+    networks: [ approval-flow-net ]
+    restart: always
 
   ## ENVOY REVERSE PROXY GATEWAY ##
   api-gateway:
@@ -131,58 +129,42 @@ services:
   ### dapr scheduler service ###
   dapr-scheduler:
     image: "ghcr.io/dapr/scheduler:1.15.4"
-    command: [ "./scheduler", "--port", "50006", "--etcd-data-dir", "/tmp/dapr-scheduler-data" ]
-    ports:
-      - "50006:50006"
+    entrypoint: [ "/scheduler" ]
+    command: [ "--etcd-data-dir=/data" ]
+    user: "0:0" # <-- add this
+    volumes:
+      - scheduler-data:/data
     networks:
       - approval-flow-net
+    restart: always
 
   ### Governance & AI Service ###
   governance-service:
-    build:
-      context: ./services/governance/.
-      dockerfile: Dockerfile
+    build: ./services/governance
     ports:
-      - "8002:8002" # Порт Express
-      - "3500:3500" # Родной HTTP порт сайдкара
-      - "50001:50001" # Родной gRPC порт сайдкара (Критично для Актеров)
-    container_name: governance-service
-    hostname: governance-service
+      - "8002:8002" # app
+      - "3500:3500" # dapr http - via network_mode
+      - "50001:50001" # dapr grpc - via network_mode
     environment:
       - APP_PORT=8002
-      - DAPR_HOST=127.0.0.1 # Снова переключаем на localhost!
+      - DAPR_HOST=127.0.0.1
       - DAPR_HTTP_PORT=3500
       - OLLAMA_API_URL=http://ollama-service:11434
-      - ENABLE_REPLAY=false
-    volumes:
-      - ./services/governance:/app
-      - /app/node_modules
+    networks: [ approval-flow-net ]
     depends_on:
-      redis:
-        condition: service_healthy
-      mongodb-db:
-        condition: service_healthy
-    restart: always
-    networks:
-      - approval-flow-net
+      redis: { condition: service_healthy }
+      mongodb-db: { condition: service_healthy }
 
   governance-dapr-sidecar:
     image: "ghcr.io/dapr/daprd:1.15.4"
-    container_name: governance-dapr-sidecar
     command: [ "/daprd", "--app-id", "governance-service", "--app-port", "8002", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--scheduler-host-address", "dapr-scheduler:50006", "--resources-path", "/dapr/components", "--config", "/dapr/config.yaml" ]
     volumes:
       - ./dapr/components:/dapr/components
       - ./dapr:/dapr
-    depends_on:
-      mongodb-db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      dapr-placement:
-        condition: service_started
-      dapr-scheduler:
-        condition: service_started
     network_mode: "service:governance-service"
+    depends_on:
+      dapr-placement: { condition: service_started }
+      dapr-scheduler: { condition: service_started }
     restart: on-failure
     ### Ollama service ###
   ollama-service:
@@ -219,17 +201,6 @@ services:
       - DAPR_HTTP_HOST=127.0.0.1
       - DAPR_HTTP_PORT=3500
       - INVOICE_URL=http://api-gateway:8000/api/v1/expenses
-      #volumes:
-      #  - ./services/management/backend:/app
-      #  - /app/node_modules
-      #  - management_public:/app/public
-      #- /app/public
-      # volumes:
-      #   - ./services/management/backend:/app/backend
-      #   - ./services/management/frontend:/app/frontend
-      #   - /app/node_modules
-      #   - /app/dist
-      #   - management_public:/app/public
     depends_on:
       mongodb-db:
         condition: service_healthy
@@ -302,4 +273,4 @@ services:
       - approval-flow-net
 
 volumes:
-  management_public:
+  scheduler-data:
