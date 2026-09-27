@@ -1,5 +1,5 @@
 import express, { NextFunction, Request, Response } from 'express';
-import { DaprClient } from '@dapr/dapr';
+import { DaprClient, ActorId } from '@dapr/dapr';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 
@@ -11,6 +11,7 @@ const STATE_STORE_NAME = 'approval-state';
 const PUB_SUB_NAME = 'approval-pubsub';
 const MONGO_STATE_STORE = 'mongo-state';
 const MONGO_INVOICES_STORE = 'mongo-invoices';
+
 const NOTIFICATION_PENDING_TOPIC = 'invoice.pending';
 
 const daprClient = new DaprClient({ daprHost: DAPR_HOST, daprPort: DAPR_PORT });
@@ -105,8 +106,6 @@ async function saveInvoiceToMongo(invoice: Record<string, unknown>): Promise<voi
 
   try {
     const trackingId = String((invoice as Record<string, unknown>).tracking_id ?? 'unknown');
-    const correlationId = String((invoice as Record<string, unknown>).correlation_id ?? 'unknown');
-
     await daprClient.state.save(MONGO_INVOICES_STORE, [
       {
         key: trackingId,
@@ -161,6 +160,24 @@ async function markOutboxProcessed(outboxKey: string, outboxValue: Record<string
       },
     },
   ]);
+}
+
+async function registerActorReminder(idempotencyKey: string, eventPayload: InvoicePayload): Promise<void> {
+  try {
+    const actorId = new ActorId(idempotencyKey);
+    // Governance owns InvoiceActor; Dapr routes this invocation to that actor service.
+    const actorClient = (daprClient.actor as unknown as {
+      actor: {
+        invoke: (actorType: string, id: ActorId, method: string, body: InvoicePayload) => Promise<unknown>;
+      };
+    }).actor;
+    await actorClient.invoke('InvoiceActor', actorId, 'startProcessingTimer', eventPayload);
+
+    logMessage('INFO', eventPayload.correlation_id, `Successfully registered actor reminder for key ${idempotencyKey}`);
+  } catch (actorErr) {
+    const msg = actorErr instanceof Error ? actorErr.message : 'Unknown actor error';
+    logMessage('ERROR', eventPayload.correlation_id, `Failed to register actor reminder: ${msg}`);
+  }
 }
 
 logMessage('INFO', '0', 'Ingestion service bootstrap complete. Listening for incoming traffic.');
@@ -249,6 +266,11 @@ app.post('/api/v1/expenses', async (req: Request, res: Response) => {
       status: 'PENDING',
     };
 
+    registerActorReminder(idempotencyKey, eventPayload).catch((err) => {
+      const message = err instanceof Error ? err.message : 'Unknown actor registration error';
+      logMessage('ERROR', correlationId, `Failed to register actor reminder for idempotency key ${idempotencyKey}: ${message}`);
+    });
+
     await daprClient.state.save(STATE_STORE_NAME, [
       {
         key: idempotencyKey,
@@ -256,9 +278,9 @@ app.post('/api/v1/expenses', async (req: Request, res: Response) => {
           tracking_id: trackingId,
           correlation_id: correlationId,
           status: 'PROCESSING',
+          lockedAt: new Date().getTime(),
           payload: eventPayload,
           lockedBy: process.env.HOSTNAME,
-          lockedAt: new Date().toISOString(),
           createdAt: new Date().toISOString(),
         },
       },
