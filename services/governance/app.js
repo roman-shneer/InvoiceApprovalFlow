@@ -253,21 +253,6 @@ async function processQueue() {
     }
 }
 
-async function startDaprServerWithRetry() {
-    try { await server.start(); return; } catch (e) {
-        if (!String(e.message).includes('DAPR_SIDECAR_COULD_NOT_BE_STARTED')) throw e;
-    }
-    const healthUrl = `http://127.0.0.1:${daprPort}/v1.0/health/ready`;
-    for (; ;) {
-        try {
-            const r = await fetch(healthUrl);
-            if (!r.ok) throw new Error(r.status);
-            await daprClient.start(); return;
-        } catch {
-            await new Promise(r => setTimeout(r, 1000));
-        }
-    }
-}
 
 async function start() {
     // ---- Express app that handles BOTH pubsub and Jobs (works with any SDK version) ----
