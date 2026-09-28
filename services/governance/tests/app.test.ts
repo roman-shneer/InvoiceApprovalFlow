@@ -1,4 +1,4 @@
-global.fetch = jest.fn().mockResolvedValue({
+(global as any).fetch = jest.fn().mockResolvedValue({
     ok: true, status: 200,
     json: async () => ({}), text: async () => ''
 });
@@ -8,10 +8,10 @@ const mockStateGet = jest.fn().mockResolvedValue(null);
 const mockStateDelete = jest.fn().mockResolvedValue(true);
 const mockPubSubPublish = jest.fn().mockResolvedValue(true);
 
-const express = require('express');
-jest.spyOn(express.application, 'listen').mockImplementation(function (port, cb) {
+import express from 'express';
+jest.spyOn(express.application as any, 'listen').mockImplementation(function (this: any, port: any, cb: any) {
     if (cb) setImmediate(cb);
-    return { close: (d) => d && d(), on: () => { } };
+    return { close: (d: any) => d && d(), on: () => { } } as any;
 });
 
 jest.mock('../resources/ragEngine', () => ({
@@ -27,7 +27,7 @@ jest.mock('../managers/aiManager', () => ({
             recommendation: 'AUTO_APPROVE', reason: 'AI ok', triggered_rules: [], confidence: 0.95
         })
     }),
-    anonymizeInvoice: jest.fn().mockImplementation((inv) => inv)
+    anonymizeInvoice: jest.fn().mockImplementation((inv: any) => inv)
 }));
 
 jest.mock('../engines/evaluateInvoiceWithAI', () => ({
@@ -63,21 +63,36 @@ jest.mock('@dapr/dapr', () => ({
 
 const flushPromises = () => new Promise(setImmediate);
 
+// ---- INLINE TYPES ----
+interface SavedInvoice {
+    tracking_id: string;
+    status: string;
+    audit_metadata?: {
+        triggered_rules: string[];
+    };
+    [key: string]: any;
+}
+
 describe('D5: One-command verification', () => {
-    let appModule, dbMock, overrideMock;
+    let appModule: any, dbMock: any, overrideMock: any;
 
     beforeEach(() => {
         jest.clearAllMocks();
         process.env.NODE_ENV = 'test';
         jest.resetModules();
-        appModule = require('../app');
+
+        // после resetModules моки нужно переопределить снова, поэтому динамический import
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        appModule = require('../app.ts');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         dbMock = require('../resources/db');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
         overrideMock = require('../engines/applyOverride');
     });
 
     test('Journey 1: accepts invoice.pending and route to AUTO_APPROVE', async () => {
-        const saved = [];
-        dbMock.saveInvoiceToMongo.mockImplementation(async (inv) => { saved.push(JSON.parse(JSON.stringify(inv))); return true; });
+        const saved: SavedInvoice[] = [];
+        dbMock.saveInvoiceToMongo.mockImplementation(async (inv: SavedInvoice) => { saved.push(JSON.parse(JSON.stringify(inv))); return true; });
         overrideMock.applyOverride.mockReturnValue({
             recommendation: 'AUTO_APPROVE', reason: 'Final auto-approve', triggered_rules: [], confidence: 0.9
         });
@@ -92,21 +107,21 @@ describe('D5: One-command verification', () => {
     }, 15000);
 
     test('Journey 2: routes to HUMAN_REVIEW when above AUTONOMY-CEILING', async () => {
-        const saved = [];
-        dbMock.saveInvoiceToMongo.mockImplementation(async (inv) => { saved.push(JSON.parse(JSON.stringify(inv))); return true; });
+        const saved: SavedInvoice[] = [];
+        dbMock.saveInvoiceToMongo.mockImplementation(async (inv: SavedInvoice) => { saved.push(JSON.parse(JSON.stringify(inv))); return true; });
         dbMock.getPolicies.mockResolvedValue([
             { value: { rule_id: 'AUTONOMY-CEILING', value: 50 } }
         ]);
 
         const actualOverride = jest.requireActual('../engines/applyOverride').applyOverride;
-        overrideMock.applyOverride.mockImplementation((aiRes, inv, rules, rate) => actualOverride(aiRes, inv, rules, rate));
+        overrideMock.applyOverride.mockImplementation((aiRes: any, inv: any, rules: any, rate: any) => actualOverride(aiRes, inv, rules, rate));
 
         await appModule.processInvoice('inv_override_test', { tracking_id: 'inv_override_test', total: '75.00', currency: 'USD' });
         await flushPromises();
 
         const human = saved.find(i => i.status === 'HUMAN_REVIEW');
         expect(human).toBeDefined();
-        expect(human.audit_metadata.triggered_rules).toEqual(expect.arrayContaining(['AUTONOMY-CEILING']));
+        expect(human!.audit_metadata!.triggered_rules).toEqual(expect.arrayContaining(['AUTONOMY-CEILING']));
     }, 15000);
 
     test('Journey 3: triggers HARD_STOP', async () => {
@@ -119,7 +134,7 @@ describe('D5: One-command verification', () => {
     test('Journey 4: fallback when MongoDB fails', async () => {
         const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
         let callCount = 0;
-        dbMock.saveInvoiceToMongo.mockImplementation(async (inv) => {
+        dbMock.saveInvoiceToMongo.mockImplementation(async (inv: any) => {
             callCount++;
             if (callCount === 2) {
                 throw new Error('MongoDB Connection Timeout');
@@ -131,7 +146,7 @@ describe('D5: One-command verification', () => {
         await flushPromises();
 
         expect(mockPubSubPublish).toHaveBeenCalled();
-        const topics = mockPubSubPublish.mock.calls.map(c => c[1]);
+        const topics = mockPubSubPublish.mock.calls.map((c: any[]) => c[1]);
         expect(topics).toContain('invoice.review');
 
         errorSpy.mockRestore();

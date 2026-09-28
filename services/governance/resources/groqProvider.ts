@@ -1,15 +1,40 @@
-const Groq = require("groq-sdk");
+import Groq from "groq-sdk";
 
-class groqProvider {
-    aiEngine = null;
-    modelName = "openai/gpt-oss-120b";
+// ---- INLINE TYPES ----
+interface Invoice {
+    [key: string]: any;
+}
+
+interface AiResponseRaw {
+    rules: string[];
+    reason: string;
+    confidence: number;
+    recommendation: string;
+}
+
+interface NormalizedAiResult {
+    triggered_rules: string[];
+    reason: string;
+    confidence: number;
+    recommendation: string;
+    model: string;
+}
+
+export class groqProvider {
+    aiEngine: any = null;
+    modelName: string = "openai/gpt-oss-120b";
+
     constructor() {
         this.aiEngine = new Groq({
-            apiKey: process.env.GROQ_API_KEY
-        });;
+            apiKey: process.env.GROQ_API_KEY as string
+        });
     }
 
-    async requestModel(trackingId, anonymizedInvoice, policyComplects) {
+    async requestModel(
+        trackingId: string,
+        anonymizedInvoice: Invoice,
+        policyComplects: string[]
+    ): Promise<NormalizedAiResult> {
         const systemPrompt = this.generateSystemPrompt(policyComplects.join('\n\n'));
         console.log(`[${trackingId}] groqProvider systemPrompt:||${systemPrompt}||`);
         const userPrompt = this.generateUserPrompt(anonymizedInvoice);
@@ -33,7 +58,7 @@ class groqProvider {
             }
             console.log(`[${trackingId}] groqProvider rawContent:||${rawContent}||`);
 
-            const aiResponse = JSON.parse(rawContent);
+            const aiResponse = JSON.parse(rawContent) as AiResponseRaw;
 
             return {
                 "triggered_rules": aiResponse.rules,
@@ -43,7 +68,7 @@ class groqProvider {
                 "model": this.modelName
             };
 
-        } catch (error) {
+        } catch (error: any) {
             console.error("[❌ Groq SDK Error]:", error.message);
             return {
                 "triggered_rules": ["API_GROQ_SDK_FALLBACK"],
@@ -55,8 +80,7 @@ class groqProvider {
         }
     }
 
-
-    getFallbackResponse(modelName, internalReason) {
+    getFallbackResponse(modelName: string, internalReason: string): NormalizedAiResult {
         return {
             "triggered_rules": ["API_COMPLIANCE_FALLBACK"],
             "reason": `System safety fallback triggered. Audit forced to manual review. (Details: ${internalReason})`,
@@ -66,8 +90,8 @@ class groqProvider {
         };
     }
 
-    generateSystemPrompt(dynamicPolicyContext) {
-        const systemPrompt = `You are an expert corporate FinOps Compliance Auditor. 
+    generateSystemPrompt(dynamicPolicyContext: string): string {
+        const systemPrompt = `You are an expert corporate FinOps Compliance Auditor.
 Your task is to analyze the user's invoice payload against the following corporate policies extracted dynamically from the company's official handbook.
 
 [ACTIVE CORPORATE POLICIES (RETRIEVED VIA RAG)]
@@ -88,16 +112,16 @@ You must apply this absolute mathematical logic for the final recommendation:
 There are zero exceptions. A non-empty array strictly locks the verdict to "HUMAN_REVIEW".
 
 [OUTPUT INSTRUCTION]
-Return ONLY a valid JSON object. Do not wrap the output in markdown blocks (no \\\`\\\`\\\`json). Keep the "reason" field brief and under 10 words. 
+Return ONLY a valid JSON object. Do not wrap the output in markdown blocks (no \\\`\\\`\\\`json). Keep the "reason" field brief and under 10 words.
 The object structure must be exactly:
 {"rules": [], "reason": "", "confidence": 1.0, "recommendation": ""}
 `;
         return systemPrompt;
     }
 
-    generateUserPrompt(invoice) {
-        return `Analyze this invoice payload: ` + JSON.stringify(invoice)
+    generateUserPrompt(invoice: Invoice): string {
+        return `Analyze this invoice payload: ` + JSON.stringify(invoice);
     }
 }
 
-module.exports = { groqProvider };
+export type { Invoice, NormalizedAiResult };

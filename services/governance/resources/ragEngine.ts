@@ -1,39 +1,51 @@
-const { OllamaEmbeddings } = require('@langchain/ollama');
-const { MemoryVectorStore } = require('langchain/vectorstores/memory');
-const { Document } = require('@langchain/core/documents');
-const { getPolicies } = require('./db');
+import { OllamaEmbeddings } from '@langchain/ollama';
+import { MemoryVectorStore } from 'langchain/vectorstores/memory';
+import { Document } from '@langchain/core/documents';
+import { getPolicies } from './db';
 
 const daprHost = process.env.DAPR_HTTP_HOST || "governance-dapr-sidecar";
 const daprPort = process.env.DAPR_HTTP_PORT || "3500";
 
-class RagEngine {
-    policies = [];
-    embedModel = process.env.AI_EMBEDDING_MODEL_NAME || "nomic-embed-text";
-    embeddings = null;
-    vectorStore = null;
-    constructor() {
+// ---- INLINE TYPES ----
+import { Policy } from '../types/Policy';
 
+interface NormalizedPolicy {
+    rule_id: string;
+    category: string;
+    rule_text: string;
+}
+
+interface Invoice {
+    category?: string;
+    [key: string]: any;
+}
+
+export class RagEngine {
+    policies: Policy[] = [];
+    embedModel: string = process.env.AI_EMBEDDING_MODEL_NAME || "nomic-embed-text";
+    embeddings: OllamaEmbeddings | null = null;
+    vectorStore: MemoryVectorStore | null = null;
+
+    constructor() {
         this.policies = [];
         this.embeddings = new OllamaEmbeddings({
             model: this.embedModel,
             baseUrl: process.env.OLLAMA_API_URL
-        });
-
+        } as any);
     }
 
-    ruleToText(rule) {
+    ruleToText(rule: NormalizedPolicy): string {
         return `Rule ID: ${rule.rule_id}` + "\n"
             + `Description: ${rule.rule_text}`;
     }
 
-
-    comparePolicies(policies) {
+    comparePolicies(policies: Policy[]): boolean {
         return JSON.stringify(this.policies) === JSON.stringify(policies);
     }
 
-    async init(policies) {
+    async init(policies: Policy[]): Promise<void> {
         try {
-            const rulesByCategory = [];
+            const rulesByCategory: NormalizedPolicy[] = [];
             policies.forEach(rule => {
                 const categories = rule.category.replace(/\//g, "&").split('&');
                 categories.forEach(category => {
@@ -45,6 +57,7 @@ class RagEngine {
                     });
                 });
             });
+
             const docs = rulesByCategory.map(rule => {
                 return new Document({
                     pageContent: this.ruleToText(rule),
@@ -55,36 +68,36 @@ class RagEngine {
                 });
             });
 
-            this.vectorStore = await MemoryVectorStore.fromDocuments(docs, this.embeddings);
+            this.vectorStore = await MemoryVectorStore.fromDocuments(docs, this.embeddings as any);
             console.log(`✅ [RAG Engine] Successfully indexed ${docs.length} segments with pure JS store.`);
-        } catch (err) {
+        } catch (err: any) {
             console.error("❌ [RAG Engine] Initialization failed:", err.message);
             if (err.cause) console.error("🔍 Error:", err.cause);
         }
     }
 
-    async retrieveRelevantPolicies(invoice, activeRules) {
+    async retrieveRelevantPolicies(invoice: Invoice, activeRules: Policy[]): Promise<string[]> {
         if (this.policies.length === 0 || !this.comparePolicies(activeRules)) {
             await this.init(activeRules);
-            this.policies = activeRules; // Update the policies after initialization
+            this.policies = activeRules;
         }
 
-        if (!this.vectorStore) return "";
+        if (!this.vectorStore) return [];
 
         try {
             const searchQuery = `Compliance policies, spending thresholds, and limits`;
             const targetCategory = invoice.category?.toLowerCase().trim();
 
-            const results = await this.vectorStore.similaritySearch(searchQuery, 10, (doc) => {
+            const results = await this.vectorStore.similaritySearch(searchQuery, 10, (doc: any) => {
                 const category = doc.metadata.category?.toLowerCase().trim();
                 return ([targetCategory, 'global rules', 'autonomy'].includes(category));
             });
             return results.map(doc => doc.pageContent);
-        } catch (err) {
+        } catch (err: any) {
             console.error("[RAG Engine] Failed to retrieve policies:", err.message);
             return [];
         }
     }
 }
 
-module.exports = { RagEngine };
+export type { Policy, Invoice };
