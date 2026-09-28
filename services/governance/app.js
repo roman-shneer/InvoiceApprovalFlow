@@ -338,5 +338,18 @@ async function publishInvoiceNotification(inv, topic) {
     catch (e) { console.error(`[${inv.tracking_id}] publish ${topic} failed:`, e.message); }
 }
 
-module.exports = { start, server, daprClient };
+module.exports = {
+    start,
+    server,
+    daprClient,
+    processInvoice,
+    claimInvoice,
+    releaseInvoiceClaim,
+    publishInvoiceNotification,
+    enqueueInvoice,
+    handleReclaimJob,
+    handleReaperJob,
+    safeJobName,
+    ragEngine
+};
 if (require.main === module) start().catch(console.error);

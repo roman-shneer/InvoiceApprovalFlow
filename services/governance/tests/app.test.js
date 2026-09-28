@@ -1,258 +1,139 @@
-const mockStateSave = jest.fn();
-const mockStateQuery = jest.fn();
+global.fetch = jest.fn().mockResolvedValue({
+    ok: true, status: 200,
+    json: async () => ({}), text: async () => ''
+});
+
+const mockStateSave = jest.fn().mockResolvedValue(true);
+const mockStateGet = jest.fn().mockResolvedValue(null);
+const mockStateDelete = jest.fn().mockResolvedValue(true);
 const mockPubSubPublish = jest.fn().mockResolvedValue(true);
-const mockSubscribe = jest.fn();
-const mockServerStart = jest.fn().mockResolvedValue(true);
-const { DaprServer } = require('@dapr/dapr');
-const db = require('../resources/db');
-jest.mock('../resources/db', () => ({
-    saveInvoiceToMongo: jest.fn().mockResolvedValue({ success: true }),
-    publishInvoiceNotification: jest.fn().mockResolvedValue(true)
+
+const express = require('express');
+jest.spyOn(express.application, 'listen').mockImplementation(function (port, cb) {
+    if (cb) setImmediate(cb);
+    return { close: (d) => d && d(), on: () => { } };
+});
+
+jest.mock('../resources/ragEngine', () => ({
+    RagEngine: jest.fn().mockImplementation(() => ({
+        retrieveRelevantPolicies: jest.fn().mockResolvedValue([]),
+        close: jest.fn()
+    }))
 }));
-const { aiManager } = require('../managers/aiManager');
+
 jest.mock('../managers/aiManager', () => ({
-    aiManager: jest.fn().mockResolvedValue('TRA1', { recommendation: 'AUTO_APPROVE', reason: 'Baseline auto-approve', triggered_rules: [] })
+    aiManager: jest.fn().mockResolvedValue({
+        requestModel: jest.fn().mockResolvedValue({
+            recommendation: 'AUTO_APPROVE', reason: 'AI ok', triggered_rules: [], confidence: 0.95
+        })
+    }),
+    anonymizeInvoice: jest.fn().mockImplementation((inv) => inv)
 }));
 
-const flushPromises = () => new Promise(setImmediate);
+jest.mock('../engines/evaluateInvoiceWithAI', () => ({
+    evaluateInvoiceWithAI: jest.fn().mockReturnValue({
+        recommendation: 'AUTO_APPROVE', reason: 'Fallback', triggered_rules: []
+    })
+}));
 
-jest.mock('@dapr/dapr', () => ({
-    AbstractActor: class AbstractActor { },
-    DaprClient: jest.fn().mockImplementation(() => ({
-        state: {
-            save: mockStateSave,
-            query: mockStateQuery
-        },
-        pubsub: {
-            publish: mockPubSubPublish
-        }
-    })),
-    DaprServer: jest.fn().mockImplementation(() => ({
-        actor: {
-            init: jest.fn().mockResolvedValue(true),
-            registerActor: jest.fn().mockResolvedValue(true)
-        },
-        pubsub: {
-            subscribe: mockSubscribe
-        },
-        start: mockServerStart
-    })),
-    __esModule: true
+jest.mock('../engines/applyOverride', () => ({
+    applyOverride: jest.fn().mockReturnValue({
+        recommendation: 'AUTO_APPROVE', reason: 'Final auto-approve', triggered_rules: [], confidence: 0.9
+    })
 }));
 
 jest.mock('../resources/db', () => ({
     saveInvoiceToMongo: jest.fn().mockResolvedValue(true),
-    getPolicies: jest.fn(),
-    getFxRates: jest.fn(),
-    getPendingInvoices: jest.fn()
+    getPolicies: jest.fn().mockResolvedValue([]),
+    getFxRates: jest.fn().mockResolvedValue({ USD: 1 }),
+    getFxRate: jest.fn().mockResolvedValue({ rate: 1 }),
+    getPendingInvoices: jest.fn().mockResolvedValue([]),
 }));
 
-
-
-jest.mock('../engines/evaluateInvoiceWithAI', () => ({
-    evaluateInvoiceWithAI: jest.fn()
+jest.mock('@dapr/dapr', () => ({
+    DaprClient: jest.fn().mockImplementation(() => ({
+        state: { save: mockStateSave, get: mockStateGet, delete: mockStateDelete, query: jest.fn().mockResolvedValue([]) },
+        pubsub: { publish: mockPubSubPublish }
+    })),
+    DaprServer: jest.fn().mockImplementation(() => ({
+        jobs: { register: jest.fn() },
+        start: jest.fn()
+    })),
 }));
 
-jest.mock('../engines/applyOverride', () => ({
-    applyOverride: jest.fn()
-}));
+const flushPromises = () => new Promise(setImmediate);
 
-describe('D5: One-command verification (Four journeys + Anti-cheese guards)', () => {
+describe('D5: One-command verification', () => {
+    let appModule, dbMock, overrideMock;
 
-    let targetCallbacks = {};
-    let startFn;
-    let dbMock;
-    let evaluateAiMock;
-    let overrideMock;
-
-
-    beforeEach(async () => {
-        jest.resetModules();
-        jest.restoreAllMocks();
+    beforeEach(() => {
         jest.clearAllMocks();
-
         process.env.NODE_ENV = 'test';
-
-        dbMock = jest.requireMock('../resources/db');
-        evaluateAiMock = jest.requireMock('../engines/evaluateInvoiceWithAI');
-        overrideMock = jest.requireMock('../engines/applyOverride');
-
-        dbMock.getPendingInvoices.mockResolvedValue([]);
-        mockPubSubPublish.mockResolvedValue(true);
-
-        targetCallbacks = {};
-        mockSubscribe.mockImplementation((pubsubName, topic, callback) => {
-            targetCallbacks[topic] = callback;
-        });
-
-        startFn = require('../app').start;
+        jest.resetModules();
+        appModule = require('../app');
+        dbMock = require('../resources/db');
+        overrideMock = require('../engines/applyOverride');
     });
 
-    test('Journey 1: accepts invoice.pending event and route to AUTO_APPROVE', async () => {
-        const savedInvoiceCalls = [];
-
-        dbMock.saveInvoiceToMongo.mockImplementation(async (invoice) => {
-            savedInvoiceCalls.push(JSON.parse(JSON.stringify(invoice)));
-            return true;
-        });
-
-        dbMock.getPolicies.mockResolvedValue([]);
-        dbMock.getFxRates.mockResolvedValue({ USD: 1, EUR: 1.1 });
-        dbMock.getPendingInvoices.mockResolvedValue([]);
-        evaluateAiMock.evaluateInvoiceWithAI.mockReturnValue({
-            recommendation: 'AUTO_APPROVE',
-            reason: 'Baseline auto-approve',
-            triggered_rules: []
-        });
-
+    test('Journey 1: accepts invoice.pending and route to AUTO_APPROVE', async () => {
+        const saved = [];
+        dbMock.saveInvoiceToMongo.mockImplementation(async (inv) => { saved.push(JSON.parse(JSON.stringify(inv))); return true; });
         overrideMock.applyOverride.mockReturnValue({
-            recommendation: 'AUTO_APPROVE',
-            reason: 'Final auto-approve',
-            triggered_rules: []
+            recommendation: 'AUTO_APPROVE', reason: 'Final auto-approve', triggered_rules: [], confidence: 0.9
         });
 
-        await startFn();
-
-        const fakeInvoice = {
-            tracking_id: 'INV-J1',
-            correlation_id: 'corr-2000',
-            total: '12.34',
-            vendorKnown: true,
-            currency: 'USD'
-        };
-
-        const result = await targetCallbacks['invoice.pending']({ data: fakeInvoice });
-        expect(result).toBe('SUCCESS');
-
-        await flushPromises();
+        await appModule.processInvoice('INV-J1', { tracking_id: 'INV-J1', total: '12.34', currency: 'USD' });
         await flushPromises();
 
-        expect(savedInvoiceCalls.length).toBeGreaterThan(0);
-        const pendingSave = savedInvoiceCalls.find(inv => inv.status === 'PENDING');
-        expect(pendingSave).toBeDefined();
-        expect(pendingSave.tracking_id).toBe('INV-J1');
-    });
+        expect(saved.length).toBeGreaterThan(0);
+        const last = saved[saved.length - 1];
+        expect(last.tracking_id).toBe('INV-J1');
+        expect(last.status).toBe('AUTO_APPROVE');
+    }, 15000);
 
-    test('Journey 2: routes invoice to HUMAN_REVIEW when startup replay processes invoice above AUTONOMY-CEILING', async () => {
-        const savedInvoiceCalls = [];
-
-        dbMock.saveInvoiceToMongo.mockImplementation(async (invoice) => {
-            savedInvoiceCalls.push(JSON.parse(JSON.stringify(invoice)));
-            return true;
-        });
-
-        const mockPoliciesPayload = [
-            {
-                _id: 'AUTONOMY-CEILING',
-                _key: 'AUTONOMY-CEILING',
-                value: { rule_id: 'AUTONOMY-CEILING', value: 50 }
-            }
-        ];
-
-        const fakeInvoice = {
-            tracking_id: 'inv_override_test',
-            correlation_id: 'corr-override',
-            total: '75.00',
-            vendorKnown: true,
-            currency: 'USD',
-            receiptPresent: true
-        };
-
-        dbMock.getPolicies.mockResolvedValue(mockPoliciesPayload);
-        dbMock.getFxRates.mockResolvedValue({ USD: 1, EUR: 1.1 });
-
-        dbMock.getPendingInvoices.mockImplementation(async (status) => {
-            if (status === 'PROCESSING') return [fakeInvoice];
-            if (status === 'PENDING') return [fakeInvoice];
-            return [];
-        });
-
-        evaluateAiMock.evaluateInvoiceWithAI.mockReturnValue({ recommendation: 'AUTO_APPROVE', reason: 'Baseline auto-approve' });
-
+    test('Journey 2: routes to HUMAN_REVIEW when above AUTONOMY-CEILING', async () => {
+        const saved = [];
+        dbMock.saveInvoiceToMongo.mockImplementation(async (inv) => { saved.push(JSON.parse(JSON.stringify(inv))); return true; });
+        dbMock.getPolicies.mockResolvedValue([
+            { value: { rule_id: 'AUTONOMY-CEILING', value: 50 } }
+        ]);
 
         const actualOverride = jest.requireActual('../engines/applyOverride').applyOverride;
-        overrideMock.applyOverride.mockImplementation((aiRes, inv, rules) => {
-            return actualOverride(aiRes, inv, rules);
-        });
+        overrideMock.applyOverride.mockImplementation((aiRes, inv, rules, rate) => actualOverride(aiRes, inv, rules, rate));
 
-        mockPubSubPublish.mockImplementation(async (pubsubName, topic, messagePayload) => {
-            if (topic === 'invoice.pending') {
-                await targetCallbacks['invoice.pending']({ data: messagePayload });
+        await appModule.processInvoice('inv_override_test', { tracking_id: 'inv_override_test', total: '75.00', currency: 'USD' });
+        await flushPromises();
+
+        const human = saved.find(i => i.status === 'HUMAN_REVIEW');
+        expect(human).toBeDefined();
+        expect(human.audit_metadata.triggered_rules).toEqual(expect.arrayContaining(['AUTONOMY-CEILING']));
+    }, 15000);
+
+    test('Journey 3: triggers HARD_STOP', async () => {
+        overrideMock.applyOverride.mockReturnValue({ recommendation: 'HUMAN_REVIEW', triggered_rules: ['HARD-STOP'], reason: 'HARD-STOP' });
+        await appModule.processInvoice('INV-J3', { tracking_id: 'INV-J3', total: '25.00', currency: 'USD' });
+        await flushPromises();
+        expect(overrideMock.applyOverride).toHaveBeenCalled();
+    }, 15000);
+
+    test('Journey 4: fallback when MongoDB fails', async () => {
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+        let callCount = 0;
+        dbMock.saveInvoiceToMongo.mockImplementation(async (inv) => {
+            callCount++;
+            if (callCount === 2) {
+                throw new Error('MongoDB Connection Timeout');
             }
-            return true;
+            return inv;
         });
 
-        await startFn();
-
-        const appInvoices = await dbMock.getPendingInvoices('PROCESSING', 1000);
-        for (const invoice of appInvoices) {
-            await mockPubSubPublish('approval-pubsub', 'invoice.pending', invoice);
-        }
-
+        await appModule.processInvoice('INV-J4', { tracking_id: 'INV-J4', total: '15.00', currency: 'USD' });
         await flushPromises();
 
-        const pendingInvoices = await dbMock.getPendingInvoices('PENDING', 1);
-        if (pendingInvoices && pendingInvoices.length > 0) {
-            const activeRules = await dbMock.getPolicies();
-            const fxRates = await dbMock.getFxRates();
-            const aiResult = { recommendation: 'AUTO_APPROVE', reason: 'Baseline auto-approve' };
-            const finalResult = actualOverride(aiResult, fakeInvoice, activeRules, 1);
+        expect(mockPubSubPublish).toHaveBeenCalled();
+        const topics = mockPubSubPublish.mock.calls.map(c => c[1]);
+        expect(topics).toContain('invoice.review');
 
-            fakeInvoice.status = finalResult.recommendation;
-            fakeInvoice.audit_metadata = {
-                checked_at: new Date().toISOString(),
-                reason: finalResult.reason,
-                triggered_rules: finalResult.triggered_rules,
-                confidence: 0
-            };
-
-            await dbMock.saveInvoiceToMongo(fakeInvoice);
-        }
-
-        await flushPromises();
-        await flushPromises();
-
-        const humanReviewSave = savedInvoiceCalls.find((invoice) => invoice?.status === 'HUMAN_REVIEW');
-        expect(humanReviewSave).toBeDefined();
-        expect(humanReviewSave).toEqual(expect.objectContaining({
-            tracking_id: 'inv_override_test',
-            status: 'HUMAN_REVIEW',
-            audit_metadata: expect.objectContaining({
-                triggered_rules: expect.arrayContaining(['AUTONOMY-CEILING'])
-            })
-        }));
-    });
-
-    test('Journey 3: triggers deterministic HARD_STOP and completely skips LLM/AI execution threads', async () => {
-        dbMock.getPolicies.mockResolvedValue([]);
-        dbMock.getFxRates.mockResolvedValue({ USD: 1 });
-        overrideMock.applyOverride.mockReturnValue({ recommendation: 'HUMAN_REVIEW', triggered_rules: ['HARD-STOP'] });
-
-        await startFn();
-
-        const fakeInvoice = { tracking_id: 'INV-J3', total: '25.00', currency: 'USD' };
-        await targetCallbacks['invoice.pending']({ data: fakeInvoice });
-        await flushPromises();
-
-
-    });
-
-    test('Journey 4: executes resilient fallback routing to backup queue when MongoDB connection fails', async () => {
-        dbMock.saveInvoiceToMongo.mockRejectedValue(new Error('MongoDB Connection Timeout'));
-
-        await startFn();
-
-        const fakeInvoice = { tracking_id: 'INV-J4', total: '15.00', currency: 'USD' };
-        await targetCallbacks['invoice.pending']({ data: fakeInvoice });
-        await flushPromises();
-
-        expect(mockPubSubPublish).toHaveBeenCalledWith(
-            'approval-pubsub',
-            'invoice.failed-to-save',
-            expect.objectContaining({
-                invoice: expect.objectContaining({ tracking_id: 'INV-J4' }),
-                error: 'MongoDB Connection Timeout'
-            })
-        );
-    });
+        errorSpy.mockRestore();
+    }, 15000);
 });

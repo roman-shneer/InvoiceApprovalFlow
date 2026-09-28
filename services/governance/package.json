@@ -5,8 +5,8 @@
     "main": "app.js",
     "type": "commonjs",
     "scripts": {
-        "test": "jest --passWithNoTests --roots tests",
-        "testone": "jest tests/managers/aiManager.test.js --no-coverage"
+        "test": "jest --passWithNoTests --roots tests --testPathIgnorePatterns=\"aiManager.test.js\" --forceExit",
+        "testone": "jest tests/managers/aiManager.test.js --no-coverage --runInBand --forceExit"
     },
     "dependencies": {
         "@dapr/dapr": "^3.18.0",

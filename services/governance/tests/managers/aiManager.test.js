@@ -1,3 +1,14 @@
+jest.mock('../../resources/db', () => ({
+    getPolicies: jest.fn().mockResolvedValue([]),
+    getFxRate: jest.fn().mockResolvedValue({ rate: 1 }),
+}));
+jest.mock('../../resources/ragEngine', () => ({
+    RagEngine: jest.fn().mockImplementation(() => ({
+        retrieveRelevantPolicies: jest.fn().mockResolvedValue([]),
+        close: jest.fn()
+    }))
+}));
+
 process.env.GROQ_API_KEY = "";
 process.env.GEMINI_API_KEY = "";
 process.env.NODE_ENV = 'test';
@@ -70,4 +81,11 @@ describe('aiManager Handler', () => {
         const aiResponse = await checkInvoice(invoice);
         expect(aiResponse.recommendation.toLowerCase()).toBe(invoice.expected.route.toLowerCase());
     }, 200000);
+});
+
+let httpServer;
+afterAll(async () => {
+    if (httpServer && httpServer.close) {
+        await new Promise(r => httpServer.close(r));
+    }
 });
