@@ -8,7 +8,7 @@ We need an administrative backoffice platform for internal managers to handle us
 
 ## Solution
 We will implement the Management service as a decoupled monolith within a single repository, split into two layers:
-1. **Backend**: Node.js (with Express/NestJS) connecting directly to the PostgreSQL database for rapid data manipulation and statistics aggregation.
+1. **Backend**: TypeScript (Node.js) (with Express/NestJS) connecting directly to the PostgreSQL database for rapid data manipulation and statistics aggregation.
 2. **Frontend**: Vue.js 3 (Composition API) for a responsive, component-driven administrative interface.
 
 ## Consequences

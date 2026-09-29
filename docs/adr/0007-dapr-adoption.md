@@ -4,7 +4,7 @@
 Accepted
 
 ## Context
-Our system consists of polyglot microservices (Node.js for Ingestion and Governance) that need to communicate, manage state, and handle pub/sub messaging. Writing custom integration code for Redis, databases, and service-to-service communication in every language creates code duplication, tight coupling to specific infrastructure vendors, and increases the time-to-market.
+Our system consists of polyglot microservices (TypeScript/Node.js for Ingestion and Governance) that need to communicate, manage state, and handle pub/sub messaging. Writing custom integration code for Redis, databases, and service-to-service communication in every language creates code duplication, tight coupling to specific infrastructure vendors, and increases the time-to-market.
 
 ## Solution
 We will adopt Dapr using the Sidecar pattern across our containerized infrastructure. All microservices will offload cross-cutting concerns (State Management, Pub/Sub, Service Invocation) to Dapr sidecars via standard HTTP/gRPC APIs, abstraction layers, and Dapr components.

@@ -22,13 +22,13 @@ The system uses containerized microservices communicating via the **Dapr (Distri
 ```mermaid
 graph TD
     Client[Postman / Vue 3 UI] -->|HTTP Requests| Envoy[Envoy API Gateway: Port 8000]
-    Envoy -->|Ingest Stream| Ingestion[Ingestion Service Node.js: Port 8001]
+    Envoy -->|Ingest Stream| Ingestion[Ingestion Service TypeScript / Node.js: Port 8001]
 
     subgraph Microservices Layer
         Ingestion        
-        Governance[Governance Service Node.js]
+        Governance[Governance Service TypeScript / Node.js]
         Payment[Payment Service]
-        Management[Management Service Node.js / Vue 3]
+        Management[Management Service TypeScript / Node.js / Vue 3]
     end
 
     subgraph Dapr Sidecar Layer
@@ -66,10 +66,10 @@ graph TD
 ```
 
 ### Microservice Directory
-1.  **Ingestion Service (Node.js Express):** Exposes a high-performance input boundary. It validates the request, derives an MD5 idempotency key from `vendor`, `invoiceNumber`, and `total`, stores the invoice in `mongo-invoices`, records the duplicate guard in `approval-state`, and publishes `invoice.pending`.
-2.  **Governance & AI Engine Agent (Node.js):** Consumes `invoice.pending`, evaluates deterministic hard-stop constraints and local Ollama inference, updates `mongo-invoices`, and publishes `invoice.payment` for payment-eligible decisions. Its stale-work recovery uses Dapr state-based leader election so only one replica reclaims old processing records at a time.
+1.  **Ingestion Service (TypeScript / Node.js Express):** Exposes a high-performance input boundary. It validates the request, derives an MD5 idempotency key from `vendor`, `invoiceNumber`, and `total`, stores the invoice in `mongo-invoices`, records the duplicate guard in `approval-state`, and publishes `invoice.pending`.
+2.  **Governance & AI Engine Agent (TypeScript / Node.js):** Consumes `invoice.pending`, evaluates deterministic hard-stop constraints and local Ollama inference, updates `mongo-invoices`, and publishes `invoice.payment` for payment-eligible decisions. Its stale-work recovery uses Dapr state-based leader election so only one replica reclaims old processing records at a time.
 3.  **Payment Service:** Consumes `invoice.payment`, tracks department budgets and FX conversion, simulates bank failures, updates the invoice ledger state, and publishes `payment.confirmed` or `payment.failed`.
-4.  **Management Service (Node.js + Vue 3):** Provides the administrative backoffice, dynamic policy and financial configuration, invoice review actions, and event-driven UI notifications.
+4.  **Management Service (TypeScript / Node.js + Vue 3):** Provides the administrative backoffice, dynamic policy and financial configuration, invoice review actions, and event-driven UI notifications.
 
 ---
 
