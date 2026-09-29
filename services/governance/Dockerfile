@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN npm install  --omit=dev
 
 COPY . .
-
+RUN npm run build
 EXPOSE 8002
 
-CMD ["node", "app.js"]
+#CMD ["node", "app.js"]
+CMD ["node", "dist/app.js"]

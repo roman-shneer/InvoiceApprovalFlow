@@ -5,12 +5,16 @@
     "main": "app.js",
     "type": "commonjs",
     "scripts": {
-        "test": "jest --passWithNoTests --roots tests --testPathIgnorePatterns=\"aiManager.test.js\" --forceExit",
+        "dev": "tsx watch app.ts",
+        "build": "tsc",
+        "start": "node dist/app.js",
+        "test": "jest --passWithNoTests --testPathIgnorePatterns=\"aiManager\" --forceExit",
         "testone": "jest tests/managers/aiManager.test.js --no-coverage --runInBand --forceExit"
     },
     "dependencies": {
         "@dapr/dapr": "^3.18.0",
         "@google/genai": "^2.12.0",
+        "@js-temporal/polyfill": "^0.5.1",
         "@langchain/core": "^0.3.40",
         "@langchain/ollama": "^0.2.0",
         "express": "^4.19.2",
@@ -22,6 +26,12 @@
         "@langchain/core": "^0.3.40"
     },
     "devDependencies": {
-        "jest": "^30.4.2"
+        "@types/express": "^5.0.6",
+        "@types/jest": "^29.5.14",
+        "@types/node": "^26.6.3",
+        "jest": "^29.7.0",
+        "ts-jest": "^29.4.4",
+        "tsx": "^4.23.15",
+        "typescript": "^5.8.3"
     }
 }

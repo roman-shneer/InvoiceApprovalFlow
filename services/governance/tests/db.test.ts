@@ -1,6 +1,6 @@
-let mockStateSave;
-let mockStateQuery;
-let mockPubSubPublish;
+let mockStateSave: jest.Mock;
+let mockStateQuery: jest.Mock;
+let mockPubSubPublish: jest.Mock;
 
 jest.mock('@dapr/dapr', () => {
     mockStateSave = jest.fn();
@@ -26,24 +26,37 @@ jest.mock('@dapr/dapr', () => {
     };
 });
 
-const { DaprClient } = require('@dapr/dapr');
-const { saveInvoiceToMongo, getPolicies } = require('../resources/db');
+import { DaprClient } from '@dapr/dapr';
+import { saveInvoiceToMongo, getPolicies } from '../resources/db';
 
+// ---- INLINE TYPES ----
+interface Invoice {
+    tracking_id: string;
+    correlation_id: string;
+    vendor: string;
+    total: number;
+    status: string;
+}
 
+interface Policy {
+    rule_id: string;
+    category: string;
+    is_active: boolean;
+}
 
 describe('Governance resources/db', () => {
-    let mockStateSave;
-    let mockStateQuery;
+    let localMockSave: jest.Mock;
+    let localMockQuery: jest.Mock;
 
     beforeEach(() => {
         jest.clearAllMocks();
-        const mockClient = new DaprClient();
-        mockStateSave = mockClient.state.save;
-        mockStateQuery = mockClient.state.query;
+        const mockClient = new (DaprClient as any)();
+        localMockSave = mockClient.state.save;
+        localMockQuery = mockClient.state.query;
     });
 
     test('saveInvoiceToMongo stores invoice with createdAt and uses tracking_id as key', async () => {
-        const invoice = {
+        const invoice: Invoice = {
             tracking_id: 'INV-1001',
             correlation_id: 'corr-1',
             vendor: 'Test Vendor',
@@ -51,11 +64,11 @@ describe('Governance resources/db', () => {
             status: 'PENDING'
         };
 
-        mockStateSave.mockResolvedValue(true);
+        localMockSave.mockResolvedValue(true);
 
-        await saveInvoiceToMongo(invoice);
+        await saveInvoiceToMongo(invoice as any);
 
-        expect(mockStateSave).toHaveBeenCalledWith('mongo-invoices', [
+        expect(localMockSave).toHaveBeenCalledWith('mongo-invoices', [
             expect.objectContaining({
                 key: 'INV-1001',
                 value: expect.objectContaining({
@@ -69,7 +82,7 @@ describe('Governance resources/db', () => {
     });
 
     test('getPolicies returns active rules from mongo-policies state store', async () => {
-        mockStateQuery.mockResolvedValue({
+        localMockQuery.mockResolvedValue({
             results: [
                 { data: { rule_id: 'RULE1', category: 'compliance', 'is_active': true } },
                 { value: { rule_id: 'RULE2', category: 'finance', 'is_active': true } }
@@ -78,7 +91,7 @@ describe('Governance resources/db', () => {
 
         const activeRules = await getPolicies();
 
-        expect(mockStateQuery).toHaveBeenCalledWith('mongo-policies', {
+        expect(localMockQuery).toHaveBeenCalledWith('mongo-policies', {
             filter: {
                 EQ: {
                     is_active: true

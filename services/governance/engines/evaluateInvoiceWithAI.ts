@@ -1,23 +1,41 @@
+// ---- INLINE TYPES ----
+interface Invoice {
+    total?: string | number;
+    category?: string;
+    vendor?: string;
+    vendorKnown?: boolean;
+    [key: string]: any;
+}
+
+interface Rule {
+    rule_id?: string;
+    category?: string;
+    [key: string]: any;
+}
+
+interface FallbackResult {
+    recommendation: 'AUTO_APPROVE' | 'HUMAN_REVIEW' | 'REJECT';
+    triggered_rules: string[];
+    reason: string;
+    confidence: number;
+    model: string;
+}
+
 /**
  * Hardcoded rule-engine fallback heuristics when LLM/RAG engine fails.
- * 
- * @param {Object} invoice - The current invoice data payload
- * @param {Array} rules - Fallback active rules fetched from the database
- * @returns {Object} - { recommendation, triggered_rules, reason }
  */
-function evaluateInvoiceWithAI(invoice, rules) {
-    const total = parseFloat(invoice.total || 0);
-    const category = String(invoice.category || "General").toLowerCase();
-    const vendor = String(invoice.vendor || "Unknown").toLowerCase();
-    const vendorKnown = invoice.vendorKnown || false;
+function evaluateInvoiceWithAI(invoice: Invoice, rules: Rule[]): FallbackResult {
+    const total: number = parseFloat((invoice.total || 0) as any);
+    const category: string = String(invoice.category || "General").toLowerCase();
+    const vendor: string = String(invoice.vendor || "Unknown").toLowerCase();
+    const vendorKnown: boolean = invoice.vendorKnown || false;
 
-    let recommendation = "AUTO_APPROVE";
-    let triggered_rules = []; // FIXED: Renamed from triggeredRules to match database and test schemas
-    let reason = "All automated compliance checks passed successfully.";
+    let recommendation: FallbackResult['recommendation'] = "AUTO_APPROVE";
+    let triggered_rules: string[] = [];
+    let reason: string = "All automated compliance checks passed successfully.";
 
-    // Convert rule array into a Set of IDs for O(1) matching performance optimization
-    // Normalized to handle variations in DB text casing securely
-    const dbRuleIds = new Set(
+    // Convert rule array into a Set of IDs for O(1) matching
+    const dbRuleIds = new Set<string>(
         rules
             .filter(r => {
                 const ruleCat = String(r.category || "").toLowerCase();
@@ -31,7 +49,9 @@ function evaluateInvoiceWithAI(invoice, rules) {
         return {
             recommendation: "HUMAN_REVIEW",
             triggered_rules: ["GLOBAL-VENDOR"],
-            reason: `Flagged by GLOBAL-VENDOR: Vendor '${invoice.vendor}' is unverified in system database.`
+            reason: `Flagged by GLOBAL-VENDOR: Vendor '${invoice.vendor}' is unverified in system database.`,
+            confidence: 0.0,
+            model: "FALLBACK_RULE_ENGINE"
         };
     }
 
@@ -50,9 +70,10 @@ function evaluateInvoiceWithAI(invoice, rules) {
         }
     }
 
-    const confidence = recommendation === "AUTO_APPROVE" ? 1.0 : 0.0;
+    const confidence: number = recommendation === "AUTO_APPROVE" ? 1.0 : 0.0;
     const model = "FALLBACK_RULE_ENGINE";
     return { recommendation, triggered_rules, reason, confidence, model };
 }
 
-module.exports = { evaluateInvoiceWithAI };
+export { evaluateInvoiceWithAI };
+export type { Invoice, Rule, FallbackResult };
