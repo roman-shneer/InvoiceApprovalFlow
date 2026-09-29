@@ -10,7 +10,8 @@
       "node",
       "jest"
     ],
-    "ignoreDeprecations": "6.0"
+    "outDir": "dist",
+    "rootDir": "."
   },
   "include": [
     "**/*"
