@@ -16,9 +16,10 @@ We will implement a hybrid decision-making pipeline inside the Governance servic
 4. **Human-in-the-Loop Escalation:** If code-rules fail or AI confidence score is below threshold (< 0.8) or detects a high-risk anomaly, the invoice is routed to a human review queue by publishing `invoice.needs_review`.
 5. **State Finalization via Events:** Once evaluated, Governance updates the invoice state in `mongo-invoices` and publishes `invoice.payment` for payment-eligible decisions. Payment subscribes directly to that event to continue the saga.
 
-6. **Leader-Based Recovery:** Replicas use the shared `leader:reclaimer` record in `approval-state` with an expiration timestamp and compare-and-set writes. The elected temporary leader alone reclaims stale processing records; normal event consumption remains distributed.
-
-Idempotency is enforced via `invoice_id` + Dapr State Store and a unique index on `invoices` to handle at-least-once delivery in Kubernetes.
+6. **Stuck Processing Recovery via Dapr Jobs API:**
+   - **Per-Invoice Reclaim:** On `PROCESSING` start, a transient Dapr Job `reclaim-{tracking_id}` with `dueTime: 5m` is created via HTTP API `v1.0-alpha1/jobs`. On trigger, it checks if invoice is still stuck (`age > 4m`) and re-publishes `invoice.pending`. Job is deleted on successful finalization.
+   - **Global Reaper:** A recurring Dapr Job `governance-reaper` with `schedule: @every 1m` scans `PROCESSING` invoices stuck >5m. Reclaim uses Dapr State optimistic concurrency (`first-write` + TTL 3600) as distributed lock per invoice (`governance:processing:{tracking_id}`), ensuring only one replica re-queues.
+   - Idempotency enforced via `invoice_id` + unique index.
 
 ## Consequences
 ### Pros:

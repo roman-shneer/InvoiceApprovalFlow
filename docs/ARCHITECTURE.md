@@ -17,7 +17,7 @@ To protect enterprise funds from potential LLM hallucinations, prompt injections
 
 ## 2. Component Design & System Boundary Topology
 
-The system uses containerized microservices communicating via the **Dapr (Distributed Application Runtime)** sidecar pattern to abstract state storage, internal message routing, and secret protection mechanisms. Distributed tracing spans are natively collected by Dapr and exported to an OpenTelemetry-compliant Zipkin backend.
+The system uses containerized microservices communicating via the **Dapr (Distributed Application Runtime)** sidecar pattern to abstract state storage, internal message routing, secret protection, and **Jobs API** (`v1.0-alpha1/jobs`). Distributed tracing spans are natively collected by Dapr and exported to an OpenTelemetry-compliant Zipkin backend.
 
 ```mermaid
 graph TD
@@ -26,9 +26,9 @@ graph TD
 
     subgraph Microservices Layer
         Ingestion        
-        Governance[Governance Service TypeScript / Node.js]
-        Payment[Payment Service]
-        Management[Management Service TypeScript / Node.js / Vue 3]
+        Governance[Governance Service TypeScript / Node.js: Port 8002]
+        Payment[Payment Service TypeScript / Node.js: Port 8003]
+        Management[Management Service TypeScript + Vue 3: Port 8004]
     end
 
     subgraph Dapr Sidecar Layer
@@ -48,13 +48,18 @@ graph TD
 
         %% Dapr Pub/Sub Broker abstraction
         Dapr1 -.->|Publish: invoice.pending| PubSub{Dapr Pub/Sub Broker}
-        Dapr2 -.->|Publish: invoice.payment| PubSub
-        PubSub -.->|Deliver Event| Dapr2
-        PubSub -.->|Deliver Event| Dapr3
+        Dapr2 -.->|Publish: invoice.payment, invoice.review, invoice.processed| PubSub
+        Dapr3 -.->|Publish: payment.confirmed, payment.failed| PubSub
+        PubSub -.->|Deliver: invoice.pending| Dapr2
+        PubSub -.->|Deliver: invoice.payment| Dapr3
+
+        %% Dapr Jobs API
+        Dapr2 -.->|Create: reclaim-{id} 5m + governance-reaper @every 1m| JobsAPI[Dapr Jobs API]
+        JobsAPI -.->|Trigger: /job/{name}| Dapr2
     end
 
     subgraph Local Secure AI Boundary
-        Governance -->|Local HTTP Inference| Ollama[Ollama Service: Llama 3]
+        Governance -->|Local HTTP Inference| Ollama[Ollama Service: Llama 3 / Qwen 2.5]
     end
 
     subgraph Observability Pipeline
@@ -66,10 +71,15 @@ graph TD
 ```
 
 ### Microservice Directory
-1.  **Ingestion Service (TypeScript / Node.js Express):** Exposes a high-performance input boundary. It validates the request, derives an MD5 idempotency key from `vendor`, `invoiceNumber`, and `total`, stores the invoice in `mongo-invoices`, records the duplicate guard in `approval-state`, and publishes `invoice.pending`.
-2.  **Governance & AI Engine Agent (TypeScript / Node.js):** Consumes `invoice.pending`, evaluates deterministic hard-stop constraints and local Ollama inference, updates `mongo-invoices`, and publishes `invoice.payment` for payment-eligible decisions. Its stale-work recovery uses Dapr state-based leader election so only one replica reclaims old processing records at a time.
-3.  **Payment Service:** Consumes `invoice.payment`, tracks department budgets and FX conversion, simulates bank failures, updates the invoice ledger state, and publishes `payment.confirmed` or `payment.failed`.
-4.  **Management Service (TypeScript / Node.js + Vue 3):** Provides the administrative backoffice, dynamic policy and financial configuration, invoice review actions, and event-driven UI notifications.
+1.  **Ingestion Service (TypeScript / Node.js Express):** Exposes a high-performance input boundary. It validates the request, derives an MD5 idempotency key from `vendor`, `invoiceNumber`, and `total`, stores the invoice in `mongo-invoices`, records the duplicate guard in `approval-state` (Redis via Dapr State), and publishes `invoice.pending`.
+2.  **Governance & AI Engine Agent (TypeScript / Node.js + Express + Dapr Jobs):** Consumes `invoice.pending` via Dapr Pub/Sub consumer groups, evaluates deterministic hard-stop constraints and local Ollama inference, updates `mongo-invoices`, and publishes final decision topics.
+    - **Topics Produced:** `invoice.processed` (intermediate), `invoice.payment` (auto-approve path), `invoice.review` (human escalation).
+    - **Stuck Processing Recovery (2-level, Dapr Jobs API v1.0-alpha1):**
+      - **L1 - Per-Invoice Reclaim Job:** On transition to `PROCESSING`, creates transient job `reclaim-{tracking_id}` with `dueTime: 5m` via `POST /v1.0-alpha1/jobs/{name}` with protobuf Any payload (`tracking_id`). On HTTP trigger `POST /job/reclaim-{id}`, `handleReclaimJob()` checks Dapr State `governance:processing:{id}` and MongoDB `PROCESSING` age. If `age > 4m`, re-publishes `invoice.pending`. Job deleted in `finally` block of `processInvoice()` via `DELETE /v1.0-alpha1/jobs/{name}`.
+      - **L2 - Global Reaper Job:** Recurring job `governance-reaper` scheduled with `schedule: @every 1m`, `repeats: 0`. `handleReaperJob()` scans `PROCESSING` invoices (limit 100), filters `now - updated_at > 5m`. Uses Dapr State optimistic concurrency (`concurrency: first-write` + `ttlInSeconds: 3600` + `owner: HOSTNAME`) as distributed lock `governance:processing:{tracking_id}` to ensure only one replica re-queues. Publishes `invoice.pending` and releases claim.
+    - **Concurrency Control:** In-memory queue `enqueueInvoice()` + `queuedInvoiceIds` Set + `claimInvoice()` / `releaseInvoiceClaim()` prevents duplicate processing within pod and across pods.
+3.  **Payment Service (TypeScript / Node.js):** Consumes `invoice.payment`, tracks department budgets and FX conversion via `getFxRate()`, simulates bank failures, updates the invoice ledger state, and publishes `payment.confirmed` or `payment.failed`.
+4.  **Management Service (TypeScript + Vue 3):** Provides the administrative backoffice, dynamic policy and financial configuration (runtime MongoDB policy injection), invoice review actions, and event-driven UI notifications.
 
 ---
 
@@ -97,16 +107,17 @@ sequenceDiagram
     IS->>ZK: Export Ingestion Span
 
     IS->>GS: Dapr Pub/Sub: invoice.pending
-    GS->>DB: Mutate status to PROCESSING
+    GS->>DB: Mutate status to PROCESSING + claim + create reclaim-{id} job 5m
 
     Note over GS: Evaluates applyOverride() -> Auto-Approve
-    GS->>DB: Persist Audited Status: AUTO_APPROVE
+    GS->>DB: Persist Audited Status: AUTO_APPROVE + delete reclaim job
 
     GS->>PS: Dapr Pub/Sub: invoice.payment
 
     Note over PS: Processes budget reserve<br/>Calls mock banking node -> Success
     PS->>DB: Persist Ledger Status: PAID
     PS->>ZK: Export Payment Span
+    PS->>PubSub: Publish payment.confirmed
 ```
 
 ### Scenario B: Human-in-the-Loop Interception (Journey INV-1007)
@@ -120,16 +131,39 @@ sequenceDiagram
     participant DB as MongoDB State Store    
     participant GS as Governance Engine
 
-    Client->>IS: POST /api/v1/expenses (Amount: \$1250.00)
+    Client->>IS: POST /api/v1/expenses (Amount: $1250.00)
     IS->>DB: Save invoice (Status: PENDING)
     IS-->>Client: 202 Accepted (Tracking ID: INV-1007)
     
     IS->>GS: Dapr Pub/Sub: invoice.pending
-    GS->>DB: Lock status to PROCESSING
+    GS->>DB: Lock status to PROCESSING + claim + create reclaim-{id} job
     
-    Note over GS: applyOverride Triggered:<br/>\$1250 exceeds AUTONOMY-CEILING (\$250).
+    Note over GS: applyOverride Triggered:<br/>$1250 exceeds AUTONOMY-CEILING ($250).
     GS->>DB: Save to mongo-invoices (Status: HUMAN_REVIEW, triggered_rules: ["AUTONOMY-CEILING"])
-    Note over GS: Execution sequence paused for manual backoffice review
+    Note over GS: Publish invoice.review + delete reclaim job<br/>Execution paused for manual backoffice review
+```
+
+### Scenario C: Stuck Processing Reclaim (Journey INV-1015)
+*Condition: Pod crashes during Ollama inference, invoice left in PROCESSING.*
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant GS1 as Governance Pod-1 (crashed)
+    participant DAPR as Dapr Jobs API
+    participant GS2 as Governance Pod-2 (reaper)
+    participant DB as MongoDB
+    participant PubSub as Pub/Sub
+
+    GS1->>DAPR: POST /jobs/reclaim-INV-1015 dueTime 5m
+    Note over GS1: Crash, job not deleted
+    DAPR-->>GS2: After 5m: POST /job/reclaim-INV-1015
+    GS2->>DB: get governance:processing:INV-1015 + check age >4m
+    GS2->>PubSub: Re-publish invoice.pending
+    Note over GS2: Parallel: governance-reaper @every 1m scans PROCESSING >5m<br/>claim via first-write lock
+
+    PubSub->>GS2: invoice.pending redelivery
+    GS2->>DB: Re-process
 ```
 
 ---
@@ -140,7 +174,7 @@ To guarantee structural ledger alignment without locking underlying distributed 
 
 ```mermaid
 graph TD    
-    Step1 -->|Success| Step2[Payment Service: Post Entry via Mock Bank Endpoint]
+    Step1[Governance: Publish invoice.payment] -->|Success| Step2[Payment Service: Post Entry via Mock Bank Endpoint]
     Step2 -->|HTTP 200: Transaction Ok| Commit[Complete Saga: Update State to PAID & Publish payment.confirmed]
     
     %% Failure Exception Pathways
@@ -160,3 +194,13 @@ graph TD
 
 ### Inbound De-duplication (Journey INV-1003)
 Every submission payload is hashed using an MD5 digest based on vendor, `invoiceNumber`, and `total` parameters. If a subsequent request matches an active key in the `approval-state` Dapr store, the Ingestion layer short-circuits execution and returns the original `200 OK PROCESSING` state without creating a duplicate invoice or publishing another `invoice.pending` event.
+
+### Processing Idempotency (Governance)
+*   **At-least-once Pub/Sub:** Dapr delivers `invoice.pending` at least once. Guarded by `governance:processing:{tracking_id}` with `first-write` concurrency and TTL 3600.
+*   **In-Memory Deduplication:** `queuedInvoiceIds` Set prevents same pod from enqueuing duplicate `tracking_id`.
+*   **MongoDB Unique Index:** Unique index on `invoices.tracking_id` prevents double insert on race.
+*   **Job Idempotency:** `safeJobName()` sanitizes to `reclaim-{id}` <=80 chars `[^a-zA-Z0-9-_]` -> `-` to ensure deterministic job names.
+
+### Canonical Types
+*   Single source of truth: `services/governance/types/Invoice.ts` and `services/governance/types/Policy.ts` with `normalizeInvoice()` helper handling `string | number` total from Mongo.
+*   Backward-compatible Policy fields: `id` / `rule_id` and `category` / `categories`.
