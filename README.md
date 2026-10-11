@@ -4,11 +4,28 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 
 ```text
 🗺️ Repository Structure
+├── artillery/                       # High perfomance tests
 ├── dapr/
 │   ├── components/                  # Dapr Component Manifests (State, Pub/Sub, Middleware)
-│   └── config.yaml                  # Global Dapr Configuration (Tracing & Pipelines)
+│   ├── config.yaml                  # Global Dapr Configuration (Tracing & Pipelines)
+|   ├── init-collections.js          # MongoDB initial script
+│   └── secrets.json.example         # Dapr secrets
 ├── gateway/
 │   └── envoy.yaml                   # Envoy Proxy API Gateway Config
+├── k8s/                             # Kubernetes Manifests for Local Development
+│   ├── api-gateway.yaml             # Envoy Gateway Deployment & Service
+│   ├── apps.yaml                    # Core microservices Deployments (ingestion, governance, payment, management)
+│   ├── configmap.yaml               # Shared non-sensitive configuration (policies, limits)
+│   ├── dapr-config.yaml             # Dapr global config (tracing, mTLS)
+│   ├── dapr-placement.yaml          # Dapr placement service (actor placement / leader election)
+│   ├── dapr-scheduler.yaml          # Dapr scheduler for reminders
+│   ├── final-apps.yaml              # Consolidated production apps bundle (all services + sidecars)
+│   ├── final-infrastructure.yaml    # Consolidated infra bundle (MongoDB, Redis, Ollama, Dapr, Zipkin)
+│   ├── ingestion-service.yaml       # Standalone ingestion deployment (dev)
+│   ├── mongodb.yaml                 # MongoDB Replica Set + init collections job
+│   ├── ollama.yaml                  # Private LLM (Llama 3) deployment for governance AI
+│   ├── redis.yaml                   # Redis pub/sub broker
+│   └── secrets.yaml.template        # Secrets template → copy to secrets.yaml for local k8s
 ├── services/
 │   ├── ingestion/                   # Ingestion Microservice Suite (Node.js Express)
 │   ├── governance/                  # Compliance & Rules Engine Agent (Node.js)
@@ -27,6 +44,11 @@ The architecture enforces a strict decoupling of high-throughput data ingestion,
 │   │   ├── 0008-payment-saga.md     # Financial Settlement & Competing Saga Transactions
 │   │   └── 0009-opentelemetry.md    # Distributed Tracing Pipeline Integration (OTel + Zipkin)
 │   └── ARCHITECTURE.md              # System Boundary & Sequence Diagrams
+├── install.bat                      # Command for creating .env and secrets
+├── dockerstart.bat                  # Command for starting project in docker
+├── dockerstop.bat                   # Command for stoping project in docker
+├── kubestart.bat                    # Command for starting project in kubernates
+├── kubestop.bat                     # Command for stoping project in kubernates
 └── README.md                        # This Document
 ```
 
