@@ -31,7 +31,7 @@ spec:
       - name: dapr-sidecar
         image: ghcr.io/dapr/daprd:1.15.4
         command: ["/daprd"]
-        args: ["--app-id", "ingestion-service", "--app-port", "8001", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components"]
+        args: ["--app-id", "ingestion-service", "--app-port", "8001", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005","--scheduler-host-address", "dapr-scheduler:50006", "--resources-path", "/dapr/components"]
         volumeMounts:
         - name: dapr-components-vol
           mountPath: /dapr/components
@@ -103,7 +103,7 @@ spec:
       - name: dapr-sidecar
         image: ghcr.io/dapr/daprd:1.15.4
         command: ["/daprd"]
-        args: ["--app-id", "governance-service", "--app-port", "8002", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components"]
+        args: ["--app-id", "governance-service", "--app-port", "8002", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005","--scheduler-host-address", "dapr-scheduler:50006", "--resources-path", "/dapr/components"]
         volumeMounts:
         - name: dapr-components-vol
           mountPath: /dapr/components
@@ -181,7 +181,7 @@ spec:
       - name: dapr-sidecar
         image: ghcr.io/dapr/daprd:1.15.4
         command: ["/daprd"]
-        args: ["--app-id", "management-service", "--app-port", "80", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components"]
+        args: ["--app-id", "management-service", "--app-port", "80", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005","--scheduler-host-address", "dapr-scheduler:50006", "--resources-path", "/dapr/components"]
         volumeMounts:
         - name: dapr-components-vol
           mountPath: /dapr/components
@@ -245,7 +245,7 @@ spec:
       - name: dapr-sidecar
         image: ghcr.io/dapr/daprd:1.15.4
         command: ["/daprd"]
-        args: ["--app-id", "payment-service", "--app-port", "8010", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005", "--resources-path", "/dapr/components"]
+        args: ["--app-id", "payment-service", "--app-port", "8010", "--app-channel-address", "127.0.0.1", "--placement-host-address", "dapr-placement:50005","--scheduler-host-address", "dapr-scheduler:50006", "--resources-path", "/dapr/components"]
         volumeMounts:
         - name: dapr-components-vol
           mountPath: /dapr/components

@@ -15,7 +15,7 @@ data:
       - name: redisHost
         value: redis:6379
       - name: redisPassword
-        value: "your-redis-password"
+        value: "redis123"
       - name: consumerID
         value: "approval-flow-group2"
       - name: enableTLS
@@ -53,7 +53,7 @@ data:
       - name: redisHost
         value: redis:6379
       - name: redisPassword
-        value: "SuperSecretPassword123"
+        value: "redis123"
       - name: actorStateStore
         value: "false"
 

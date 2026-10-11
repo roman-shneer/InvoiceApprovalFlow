@@ -1,3 +1,13 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-pvc
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  resources:
+    requests:
+      storage: 20Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,21 +27,23 @@ spec:
       containers:
       - name: ollama
         image: ollama/ollama:latest
+        imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 11434
         command: ["sh", "-c"]
         args:
         - |
           ollama serve &
-          echo "Waiting for Ollama server to respond..."
-          until ollama list > /dev/null 2>&1; do
-            sleep 2
-          done
-          echo "Pulling target model: ${AI_MODEL_NAME}..."
-          ollama pull ${AI_MODEL_NAME}
-          echo "Pulling embed model: nomic-embed-text..."
-          ollama pull nomic-embed-text
-          echo "Model download complete! Keeping container alive..."
+          until ollama list > /dev/null 2>&1; do sleep 2; done
+          if ! ollama list | grep -q "${AI_MODEL_NAME}"; then
+            echo "Pulling ${AI_MODEL_NAME}..."
+            ollama pull ${AI_MODEL_NAME}
+          else
+            echo "Model ${AI_MODEL_NAME} already exists, skipping pull"
+          fi
+          if ! ollama list | grep -q "nomic-embed-text"; then
+            ollama pull nomic-embed-text
+          fi
           wait $!
         env:
         - name: AI_MODEL_NAME
@@ -39,14 +51,20 @@ spec:
             configMapKeyRef:
               name: approval-config
               key: ai-model-name
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "8Gi"
+            cpu: "4"
         volumeMounts:
         - name: ollama-storage
           mountPath: /root/.ollama
       volumes:
       - name: ollama-storage
-        # NOTE: For local testing emptyDir is fine, but PersistentVolumeClaim 
-        # prevents redownloading models on pod restart.
-        emptyDir: {}
+        persistentVolumeClaim:
+          claimName: ollama-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -56,6 +74,5 @@ spec:
   selector:
     app: ollama-service
   ports:
-  - protocol: TCP
-    port: 11434
+  - port: 11434
     targetPort: 11434

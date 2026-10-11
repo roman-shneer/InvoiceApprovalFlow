@@ -1,3 +1,28 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: approval-config
+data:
+  mongo-db-name: "invoice_db"
+  ai-model-name: "llama3"
+  mongo-collection: "approvals"
+  mongo-connection-string: "mongodb://mongodb:27017"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pubsub-config
+data:
+  dummy: "dummy"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: state-config
+data:
+  dummy: "dummy"
+---
 ### Ingestion Service ###
 apiVersion: apps/v1
 kind: Deployment
@@ -17,8 +42,8 @@ spec:
     spec:
       containers:
       - name: app
-        image: localhost:5001/ingestion-service:latest
-        imagePullPolicy: IfNotPresent
+        image: ingestion-service:latest
+        imagePullPolicy: Never
         ports:
         - containerPort: 8001
         env:
@@ -28,7 +53,6 @@ spec:
           value: "127.0.0.1"
         - name: DAPR_PORT
           value: "3500"
-
       - name: dapr-sidecar
         image: ghcr.io/dapr/daprd:1.15.4
         command: ["/daprd"]
@@ -42,7 +66,6 @@ spec:
         volumeMounts:
         - name: dapr-resources
           mountPath: /dapr/components
-
       volumes:
       - name: dapr-resources
         projected:
@@ -73,12 +96,7 @@ metadata:
   labels:
     app: governance-service
 spec:
-  replicas: 3
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 0
-      maxSurge: 1
+  replicas: 1
   selector:
     matchLabels:
       app: governance-service
@@ -89,8 +107,8 @@ spec:
     spec:
       containers:
       - name: app
-        image: localhost:5001/governance-service:v3
-        imagePullPolicy: IfNotPresent
+        image: governance-service:v3
+        imagePullPolicy: Never
         ports:
         - containerPort: 8002
         env:
@@ -112,7 +130,6 @@ spec:
             configMapKeyRef:
               name: approval-config
               key: ai-model-name
-
       - name: dapr-sidecar
         image: ghcr.io/dapr/daprd:1.15.4
         command: ["/daprd"]
@@ -126,7 +143,6 @@ spec:
         volumeMounts:
         - name: dapr-resources
           mountPath: /dapr/components
-
       volumes:
       - name: dapr-resources
         projected:
@@ -168,8 +184,8 @@ spec:
     spec:
       containers:
       - name: app
-        image: localhost:5001/management-service:latest
-        imagePullPolicy: IfNotPresent
+        image: management-service:latest
+        imagePullPolicy: Never
         ports:
         - containerPort: 80
         env:
@@ -198,7 +214,6 @@ spec:
           value: "submitter"
         - name: DEFAULT_USER_SUBMITTER_PASSWORD
           value: "submitter123"
-
       - name: dapr-sidecar
         image: ghcr.io/dapr/daprd:1.15.4
         command: ["/daprd"]
@@ -212,7 +227,6 @@ spec:
         volumeMounts:
         - name: dapr-resources
           mountPath: /dapr/components
-
       volumes:
       - name: dapr-resources
         projected:
@@ -254,8 +268,8 @@ spec:
     spec:
       containers:
       - name: app
-        image: localhost:5001/payment-service:latest
-        imagePullPolicy: IfNotPresent
+        image: payment-service:latest
+        imagePullPolicy: Never
         ports:
         - containerPort: 8010
         env:
@@ -270,7 +284,6 @@ spec:
             configMapKeyRef:
               name: approval-config
               key: mongo-db-name
-
       - name: dapr-sidecar
         image: ghcr.io/dapr/daprd:1.15.4
         command: ["/daprd"]
@@ -284,7 +297,6 @@ spec:
         volumeMounts:
         - name: dapr-resources
           mountPath: /dapr/components
-
       volumes:
       - name: dapr-resources
         projected:
